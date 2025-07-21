@@ -12,3 +12,5 @@ torchaudio
 onnxruntime
 
 silero-vad
+
+TTS

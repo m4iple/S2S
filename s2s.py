@@ -27,6 +27,7 @@ class S2S:
         self.vad_audio_buffer = torch.tensor([])
 
         self.speech_audio_buffer = torch.tensor([])
+        self.speech_original_buffer = torch.tensor([])
 
 
     def get_audio_devices(self):
@@ -107,7 +108,7 @@ class S2S:
     
     def process_audio(self, indata):
         debug_speech_detect_start = time.time()
-        # idea do later to capure dual chanel audio of original speech to later autotune tts to it?
+
         audio_tensor = torch.from_numpy(indata[:, 0]).to(torch.float32)
         resampled_audio = self.resample_audio(audio_tensor, self.samplerate, self.vad_samplerate)
         self.vad_audio_buffer = torch.cat([self.vad_audio_buffer, resampled_audio])
@@ -119,10 +120,14 @@ class S2S:
             speech_prob = self.vad_model(chunk, self.vad_samplerate).item()
             if speech_prob > self.vad_speech_prob:
                 self.speech_audio_buffer = torch.cat([self.speech_audio_buffer, chunk])
+
+                orig_chunk = torch.from_numpy(indata[:self.vad_buffer_lenght, :]).to(torch.float32)
+                self.speech_original_buffer = torch.cat([self.speech_original_buffer, orig_chunk])
+
                 # speech dtect takes about 1.30 - 2.30 ms
                 debug_speech_detect_end = time.time()
                 self.debug_time_print("Speech detect:", debug_speech_detect_start, debug_speech_detect_end)
-                print(f"Speech detected! (Confidence: {speech_prob:.2f})")
+                # todo VITS
 
         return indata
 
