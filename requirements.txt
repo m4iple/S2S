@@ -1,16 +1,14 @@
 
-numpy
-
+pytorch
+torchvision
+torchaudio
+onnxruntime-gpu
+piper-tts
 sounddevice
-
+silero-vad
+faster-whisper
 PyQt6
 
-torch
 
-torchaudio
 
-onnxruntime
 
-silero-vad
-
-TTS

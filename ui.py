@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QMainWindow, QPushButton, QComboBox, QLabel, QDoubleSpinBox, QHBoxLayout, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QMainWindow, QPushButton, QComboBox, QLabel, QDoubleSpinBox, QHBoxLayout, QVBoxLayout, QWidget, QLineEdit, QTextEdit
 from s2s import S2S
 
 class StreamWindow(QMainWindow):
@@ -9,89 +9,95 @@ class StreamWindow(QMainWindow):
         self.init_ui()
 
     def init_ui(self):
-        devices = self.s2s.get_audio_devices()
-        default_input = self.s2s.get_current_input()
-        default_output = self.s2s.get_current_output()
-
-        self.input_devices = [d['name'] for d in devices]
-        self.output_devices = [d['name'] for d in devices]
-        self.input_combo = QComboBox()
-        self.input_combo.addItems(self.input_devices)
-        self.input_combo.setCurrentIndex(default_input)
-        self.input_combo.currentIndexChanged.connect(self.change_input)
-        self.output_combo = QComboBox()
-        self.output_combo.addItems(self.output_devices)
-        self.output_combo.setCurrentIndex(default_output)
-        self.output_combo.currentIndexChanged.connect(self.change_output)
-
-        self.latency_combo = QComboBox()
-        self.latency_combo.addItems(['Low', 'High'])
-        self.latency_combo.setCurrentIndex(0)
-        self.latency_combo.currentIndexChanged.connect(self.change_latency)
-
-        # Samplerate
-        self.samplerate_spin = QDoubleSpinBox()
-        self.samplerate_spin.setRange(8000, 192000)
-        self.samplerate_spin.setValue(self.s2s.get_current_samplerate())
-        self.samplerate_spin.setSingleStep(1000)
-        self.samplerate_spin.valueChanged.connect(self.change_samplerate)
-
-        # Blocksize
-        self.blocksize_spin = QDoubleSpinBox()
-        self.blocksize_spin.setRange(16, 8192)
-        self.blocksize_spin.setValue(self.s2s.get_current_blocksize())
-        self.blocksize_spin.setSingleStep(16)
-        self.blocksize_spin.valueChanged.connect(self.change_blocksize)
-
-        # Dtype
-        self.dtype_combo = QComboBox()
-        dtypes = ['float32', 'int16', 'int32', 'uint8']
-        self.dtype_combo.addItems(dtypes)
-        current_dtype = str(self.s2s.get_current_dtype())
-        if current_dtype in dtypes:
-            self.dtype_combo.setCurrentText(current_dtype)
-        self.dtype_combo.currentTextChanged.connect(self.change_dtype)
-
-        # Channels
-        self.channels_spin = QDoubleSpinBox()
-        self.channels_spin.setRange(1, 16)
-        self.channels_spin.setValue(self.s2s.get_current_channels())
-        self.channels_spin.setSingleStep(1)
-        self.channels_spin.valueChanged.connect(self.change_channels)
-
         self.toggle_btn = QPushButton('Start Stream')
         self.toggle_btn.setCheckable(True)
         self.toggle_btn.clicked.connect(self.toggle_stream)
 
+        # Model selection
+        model_layout = QHBoxLayout()
+        model_label = QLabel('Model:')
+        self.model_combo = QComboBox()
+        self.populate_models()
+        self.model_combo.currentTextChanged.connect(self.change_model)
+        model_layout.addWidget(model_label)
+        model_layout.addWidget(self.model_combo)
+
+        # Manual text input
+        text_layout = QVBoxLayout()
+        text_label = QLabel('Manual Text Input:')
+        self.text_input = QLineEdit()
+        self.text_input.setPlaceholderText('Enter text to synthesize...')
+        self.text_input.returnPressed.connect(self.synthesize_text)  # Enter key support
+        self.synthesize_btn = QPushButton('Synthesize')
+        self.synthesize_btn.clicked.connect(self.synthesize_text)
+        text_layout.addWidget(text_label)
+        text_layout.addWidget(self.text_input)
+        text_layout.addWidget(self.synthesize_btn)
+
         layout = QVBoxLayout()
-        row1 = QHBoxLayout()
-        row1.addWidget(QLabel('Input Device:'))
-        row1.addWidget(self.input_combo)
-        row1.addWidget(QLabel('Output Device:'))
-        row1.addWidget(self.output_combo)
-        layout.addLayout(row1)
-
-        row2 = QHBoxLayout()
-        row2.addWidget(QLabel('Latency:'))
-        row2.addWidget(self.latency_combo)
-        row2.addWidget(QLabel('Samplerate:'))
-        row2.addWidget(self.samplerate_spin)
-        row2.addWidget(QLabel('Blocksize:'))
-        row2.addWidget(self.blocksize_spin)
-        layout.addLayout(row2)
-
-        row4 = QHBoxLayout()
-        row4.addWidget(QLabel('Dtype:'))
-        row4.addWidget(self.dtype_combo)
-        row4.addWidget(QLabel('Channels:'))
-        row4.addWidget(self.channels_spin)
-        layout.addLayout(row4)
-
+        layout.addLayout(model_layout)
+        layout.addLayout(text_layout)
         layout.addWidget(self.toggle_btn)
 
         container = QWidget()
         container.setLayout(layout)
         self.setCentralWidget(container)
+
+    def populate_models(self):
+        """Populate the model dropdown with available models"""
+        models = self.s2s.get_available_models()
+        self.model_combo.clear()
+        
+        if not models:
+            self.model_combo.addItem("No models available", None)
+            return
+        
+        # Check if we have the new format (list of dicts) or old format (list of strings)
+        if models and isinstance(models[0], dict):
+            # New format with voices.json
+            for model in models:
+                display_name = model['display_name']
+                key = model['key']
+                self.model_combo.addItem(display_name, key)
+            
+            # Try to set current model as selected
+            current_model_key = 'en_US-lessac-medium'  # Default
+            for i in range(self.model_combo.count()):
+                if self.model_combo.itemData(i) == current_model_key:
+                    self.model_combo.setCurrentIndex(i)
+                    break
+        else:
+            # Old format (fallback)
+            for model in models:
+                # Remove .onnx extension for display
+                display_name = model.replace('.onnx', '') if isinstance(model, str) else str(model)
+                self.model_combo.addItem(display_name, model)
+            
+            # Set current model as selected (default is the first one loaded)
+            current_model = 'en_US-lessac-medium.onnx'
+            for i in range(self.model_combo.count()):
+                if self.model_combo.itemData(i) == current_model:
+                    self.model_combo.setCurrentIndex(i)
+                    break
+
+    def change_model(self):
+        """Handle model selection change"""
+        if self.model_combo.currentData():
+            try:
+                model_key = self.model_combo.currentData()
+                self.s2s.set_model(model_key)
+            except Exception as e:
+                print(f"Error changing model: {e}")
+
+    def synthesize_text(self):
+        """Synthesize the text from the input field"""
+        text = self.text_input.text().strip()
+        if text:
+            try:
+                self.s2s.synthesize_text(text)
+                self.text_input.clear()  # Clear the input after synthesis
+            except Exception as e:
+                print(f"Error synthesizing text: {e}")
 
     def change_input(self):
         index = self.input_combo.currentIndex()
@@ -124,21 +130,7 @@ class StreamWindow(QMainWindow):
     def toggle_stream(self):
         if self.toggle_btn.isChecked():
             self.toggle_btn.setText('Stop Stream')
-            self.input_combo.setDisabled(True)
-            self.output_combo.setDisabled(True)
-            self.latency_combo.setDisabled(True)
-            self.samplerate_spin.setDisabled(True)
-            self.blocksize_spin.setDisabled(True)
-            self.dtype_combo.setDisabled(True)
-            self.channels_spin.setDisabled(True)
             self.s2s.start_stream()
         else:
             self.toggle_btn.setText('Start Stream')
-            self.input_combo.setDisabled(False)
-            self.output_combo.setDisabled(False)
-            self.latency_combo.setDisabled(False)
-            self.samplerate_spin.setDisabled(False)
-            self.blocksize_spin.setDisabled(False)
-            self.dtype_combo.setDisabled(False)
-            self.channels_spin.setDisabled(False)
-            self.s2s.end_stream()
+            self.s2s.stop_stream()

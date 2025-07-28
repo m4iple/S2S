@@ -3,153 +3,346 @@ import time
 import torch
 import torchaudio
 from silero_vad import load_silero_vad
+from piper import PiperVoice
+import faster_whisper
+import os
+import numpy as np
+import threading
+import queue
+import json
+
+def load_whisper_model():
+    """Loads the Faster Whisper model."""
+    whisper_model = faster_whisper.WhisperModel(
+        'base', 
+        device='cuda', 
+        compute_type='float16'
+    )
+    return whisper_model
 
 class S2S:
     def __init__(self):
-        self.debug_printend = False
-        self.stream = None
-        self.input = sd.default.device[0] #71
-        self.output = sd.default.device[1] #51
-        self.samplerate = sd.default.samplerate if sd.default.samplerate is not None else 44100
+        self.is_running = threading.Event()
+
+        self.input_device_index = sd.default.device[0]
+        self.output_device_index = sd.default.device[1]
+        self.samplerate = 48000
         self.blocksize = 1024
-        self.dtype = sd.default.dtype
-        self.latency = ['low', 'low']
-        self.channels = sd.default.channels
-        if self.channels is None or self.channels == [None, None]:
-            self.channels = [1, 1]
-        else:
-            self.channels = [c if c is not None else 1 for c in self.channels]
+        self.dtype = 'float32'
+        self.channels = 1
+
+        self.input_queue = queue.Queue()
+        self.tts_output_buffer = np.array([], dtype=self.dtype)
 
         self.vad_model = load_silero_vad()
         self.vad_samplerate = 16000
-        self.vad_speech_prob = 0.5
-        self.vad_buffer_lenght = 512
-        self.vad_audio_buffer = torch.tensor([])
+        self.vad_speech_prob_threshold = 0.5
+        self.vad_buffer_chunk_size = 512
+        self.vad_audio_buffer = torch.empty(0)
+        self.is_speaking = False
+        self.speech_audio_buffer = torch.empty(0)
+        self.silence_counter = 0
+        self.silence_threshold_frames = 5
+        
+        # Pre-create resampler to avoid recreation overhead
+        self.vad_resampler = torchaudio.transforms.Resample(
+            orig_freq=self.samplerate, 
+            new_freq=self.vad_samplerate
+        ) if self.samplerate != self.vad_samplerate else None
 
-        self.speech_audio_buffer = torch.tensor([])
-        self.speech_original_buffer = torch.tensor([])
+        self.device = "cuda"
+        self.text_model = load_whisper_model()
+        
+        print("Loading Piper TTS model...")
 
+        default_voice_key = 'en_US-hfc_female-medium'
+        voice_path = None
+        
+        voices_json_path = '.models/voices.json'
+        if os.path.exists(voices_json_path):
+            try:
+                with open(voices_json_path, 'r', encoding='utf-8') as f:
+                    voices_data = json.load(f)
+                
+                if default_voice_key in voices_data:
+                    voice_info = voices_data[default_voice_key]
+                    for file_path in voice_info.get('files', {}).keys():
+                        if file_path.endswith('.onnx'):
+                            test_path = os.path.join('.models', file_path)
+                            if os.path.exists(test_path):
+                                voice_path = test_path
+                                break
+            except json.JSONDecodeError as e:
+                print(f"Error reading voices.json: {e}")
+        
+        if not voice_path:
+            raise FileNotFoundError(f"No TTS model found. Please ensure you have models in the .models directory.")
+        
+        print(f"Loading model from: {voice_path}")
+        
+        # Optimize ONNX Runtime for performance
+        os.environ['ORT_ENABLE_CUDA_GRAPH'] = '1'  # Enable CUDA graph optimization
+        os.environ['ORT_DISABLE_ALL_OPTIMIZATION'] = '0'  # Ensure optimizations are enabled
+        os.environ['ORT_TENSORRT_ENGINE_CACHE_ENABLE'] = '1'  # Enable TensorRT cache if available
+        
+        self.tts_model = PiperVoice.load(voice_path, use_cuda=True)
+        
+        # Pre-create TTS output resampler for performance
+        self.tts_resampler = torchaudio.transforms.Resample(
+            orig_freq=self.tts_model.config.sample_rate,
+            new_freq=self.samplerate
+        ) if self.tts_model.config.sample_rate != self.samplerate else None
+        
+        print("All models loaded.")
+
+        # --- Threads ---
+        self.stream = None
+        self.processing_thread = None
 
     def get_audio_devices(self):
         return sd.query_devices()
 
-    def get_current_input(self):
-        return self.input
+    def set_input_device(self, index):
+        self.input_device_index = index
 
-    def get_current_output(self):
-        return self.output
+    def set_output_device(self, index):
+        self.output_device_index = index
+        
+    def audio_callback(self, indata, outdata, frames, time, status):
+        if status:
+            print(status)
+        
+        self.input_queue.put(indata.copy())
 
-    def get_current_samplerate(self):
-        return self.samplerate
+        buffer_len = len(self.tts_output_buffer)
+        if buffer_len >= frames:
+            outdata[:] = self.tts_output_buffer[:frames].reshape(outdata.shape)
+            self.tts_output_buffer = self.tts_output_buffer[frames:]
+        else:
+            outdata[:buffer_len] = self.tts_output_buffer.reshape(-1, 1)
+            outdata[buffer_len:] = 0
+            self.tts_output_buffer = np.array([], dtype=self.dtype)
 
-    def get_current_blocksize(self):
-        return self.blocksize
-
-    def get_current_dtype(self):
-        return self.dtype[0]
-
-    def get_current_latency(self):
-        return self.latency[0]
-
-    def get_current_channels(self):
-        return self.channels[0]
-
-    def set_input(self, input):
-        self.input = input
-
-    def set_output(self, output):
-        self.output = output
-
-    def set_samplerate(self, samplerate):
-        self.samplerate = samplerate
-
-    def set_blocksize(self, blocksize):
-        self.blocksize = blocksize
-
-    def set_dtype(self, dtype):
-        self.dtype = [dtype, dtype]
-
-    def set_latency(self, latency):
-        if isinstance(latency, int):
-            latency_map = {0: 'low', 1: 'high'}
-            latency = latency_map.get(latency, 'low')
-        self.latency = [latency, latency]
-
-    def set_channels(self, channels):
-        self.channels = [channels, channels]
-
-    def callback(self, indata, outdata, frames, time, status):
-        self.print_stream_device_timing()
-        processed = self.process_audio(indata)
-        outdata[:] = processed 
-
-    def start_stream(self):
-        if self.stream is None:
-            #wasapi_exclusive = sd.WasapiSettings(exclusive=True) # not avaiable for my device (for now)
+    def _processing_loop(self):
+        while self.is_running.is_set():
             try:
-                self.stream = sd.Stream(
-                    device=(self.input, self.output),
-                    samplerate=self.samplerate,
-                    blocksize=self.blocksize,
-                    dtype=self.dtype,
-                    latency=self.latency,
-                    channels=self.channels,
-                    callback=self.callback,
-                )
-                self.stream.start()
+                indata = self.input_queue.get(timeout=1)
+                
+                audio_tensor = torch.from_numpy(indata[:, 0]).to(torch.float32)
+                resampled_for_vad = self.resample_audio(audio_tensor, self.samplerate, self.vad_samplerate)
+                self.vad_audio_buffer = torch.cat([self.vad_audio_buffer, resampled_for_vad])
+
+                while self.vad_audio_buffer.shape[0] >= self.vad_buffer_chunk_size:
+                    chunk = self.vad_audio_buffer[:self.vad_buffer_chunk_size]
+                    self.vad_audio_buffer = self.vad_audio_buffer[self.vad_buffer_chunk_size:]
+                    
+                    speech_prob = self.vad_model(chunk, self.vad_samplerate).item()
+
+                    if speech_prob > self.vad_speech_prob_threshold:
+                        self.silence_counter = 0
+                        if not self.is_speaking:
+                            self.is_speaking = True
+                        self.speech_audio_buffer = torch.cat([self.speech_audio_buffer, chunk])
+                    else:
+                        if self.is_speaking:
+                            self.silence_counter += 1
+                            if self.silence_counter > self.silence_threshold_frames:
+                                self.is_speaking = False
+                                complete_time_start = time.time()
+                                audio_to_process = self.speech_audio_buffer.clone().cpu().numpy()
+                                self.speech_audio_buffer = torch.empty(0)
+                                self.silence_counter = 0
+                                
+                                text = self.whisper_transcribe(audio_to_process)
+                                print(f"Transcribed: '{text.strip()}'")
+
+                                if text.strip():
+                                    self._synthesize_and_buffer_text(text)
+                                    complete_time_end = time.time()
+                                    print(f"Complete synthesis took: {(complete_time_end - complete_time_start) * 1000:.2f} ms")
+            
+            except queue.Empty:
+                continue
             except Exception as e:
-                print(f'Stream exception {e}')
+                print(f"Error in processing loop: {e}")
 
-    def end_stream(self):
-        if self.stream is not None:
-            self.stream.stop()
-            self.stream.close()
-            self.stream = None
-    
-    def process_audio(self, indata):
-        debug_speech_detect_start = time.time()
-
-        audio_tensor = torch.from_numpy(indata[:, 0]).to(torch.float32)
-        resampled_audio = self.resample_audio(audio_tensor, self.samplerate, self.vad_samplerate)
-        self.vad_audio_buffer = torch.cat([self.vad_audio_buffer, resampled_audio])
-
-        while self.vad_audio_buffer.shape[0] > self.vad_buffer_lenght:
-            chunk = self.vad_audio_buffer[:self.vad_buffer_lenght]
-            self.vad_audio_buffer = self.vad_audio_buffer[self.vad_buffer_lenght:]
-
-            speech_prob = self.vad_model(chunk, self.vad_samplerate).item()
-            if speech_prob > self.vad_speech_prob:
-                self.speech_audio_buffer = torch.cat([self.speech_audio_buffer, chunk])
-
-                orig_chunk = torch.from_numpy(indata[:self.vad_buffer_lenght, :]).to(torch.float32)
-                self.speech_original_buffer = torch.cat([self.speech_original_buffer, orig_chunk])
-
-                # speech dtect takes about 1.30 - 2.30 ms
-                debug_speech_detect_end = time.time()
-                self.debug_time_print("Speech detect:", debug_speech_detect_start, debug_speech_detect_end)
-                # todo VITS
-
-        return indata
+    def whisper_transcribe(self, audio):
+        stt_start_time = time.time()
+        segments, _ = self.text_model.transcribe(audio, beam_size=5)
+        stt_end_time = time.time()
+        print(f"Whisper transcription took: {(stt_end_time - stt_start_time) * 1000:.2f} ms")
+        return "".join(segment.text for segment in segments)
 
     def resample_audio(self, audio_tensor, original_rate, target_rate):
         if original_rate == target_rate:
             return audio_tensor
-
+        
+        # Use pre-created resampler for VAD if applicable
+        if (original_rate == self.samplerate and target_rate == self.vad_samplerate 
+            and self.vad_resampler is not None):
+            return self.vad_resampler(audio_tensor)
+        
+        # Use pre-created resampler for TTS output if applicable
+        if (original_rate == self.tts_model.config.sample_rate and target_rate == self.samplerate 
+            and self.tts_resampler is not None):
+            return self.tts_resampler(audio_tensor)
+        
+        # Create resampler for other cases
         resampler = torchaudio.transforms.Resample(orig_freq=original_rate, new_freq=target_rate)
         return resampler(audio_tensor)
 
-    def print_stream_device_timing(self):
-        if self.debug_printend == False:
-            self.debug_printend = True
-            input_lat = self.stream.latency[0]
-            output_lat = self.stream.latency[1]
+    def start_stream(self):
+        if self.stream is None:
+            try:
+                self.is_running.set()
+                self.processing_thread = threading.Thread(target=self._processing_loop)
+                self.processing_thread.start()
+
+                self.stream = sd.Stream(
+                    device=(self.input_device_index, self.output_device_index),
+                    samplerate=self.samplerate,
+                    blocksize=self.blocksize,
+                    dtype=self.dtype,
+                    channels=self.channels,
+                    callback=self.audio_callback,
+                )
+                self.stream.start()
+                print("Stream started.")
+            except Exception as e:
+                print(f"Error starting stream: {e}")
+
+    def stop_stream(self):
+        if self.stream is not None:
+            self.is_running.clear()
+            
+            if self.processing_thread:
+                self.processing_thread.join(timeout=2)
+                self.processing_thread = None
+
+            self.stream.stop()
+            self.stream.close()
+            self.stream = None
+            print("Stream stopped.")
+
+    def get_available_models(self):
+        """Get list of available TTS models from voices.json"""
+        voices_json_path = '.models/voices.json'
+        if not os.path.exists(voices_json_path):
+            models_dir = '.models'
+            if not os.path.exists(models_dir):
+                return []
+            
+            models = []
+            for file in os.listdir(models_dir):
+                if file.endswith('.onnx'):
+                    models.append(file)
+            return models
         
-            print("---")
-            print(f"Reported Input Latency: {input_lat * 1000:.2f} ms")
-            print(f"Reported Output Latency: {output_lat * 1000:.2f} ms")
-            print(f"Total Reported Latency: {(input_lat + output_lat) * 1000:.2f} ms")
-            print("---")
-    
-    def debug_time_print(self, text, debug_time_start, debug_time_end):
-        elapsed_ms = (debug_time_end - debug_time_start) * 1000
-        print(f"{text} {elapsed_ms:.2f} ms")
+        try:
+            with open(voices_json_path, 'r', encoding='utf-8') as f:
+                voices_data = json.load(f)
+            
+            available_models = []
+            for voice_key, voice_info in voices_data.items():
+                onnx_file_path = None
+                for file_path in voice_info.get('files', {}).keys():
+                    if file_path.endswith('.onnx'):
+                        full_path = os.path.join('.models', file_path)
+                        if os.path.exists(full_path):
+                            onnx_file_path = file_path
+                            break
+                
+                if onnx_file_path:
+                    language = voice_info.get('language', {})
+                    name = voice_info.get('name', voice_key)
+                    quality = voice_info.get('quality', '')
+                    
+                    display_name = f"{language.get('name_english', language.get('code', ''))} {language.get('region', '')} - {name}"
+                    if quality:
+                        display_name += f" ({quality})"
+                    
+                    available_models.append({
+                        'key': voice_key,
+                        'display_name': display_name,
+                        'file_path': onnx_file_path,
+                        'language': language,
+                        'name': name,
+                        'quality': quality
+                    })
+
+            available_models.sort(key=lambda x: (x['language'].get('name_english', ''), x['language'].get('region', ''), x['name'], x['quality']))
+            return available_models
+            
+        except Exception as e:
+            print(f"Error reading voices.json: {e}")
+            return []
+
+    def set_model(self, model_key_or_filename):
+        """Switch to a different TTS model"""
+        voice_path = None
+        
+        voices_json_path = '.models/voices.json'
+        if os.path.exists(voices_json_path):
+            try:
+                with open(voices_json_path, 'r', encoding='utf-8') as f:
+                    voices_data = json.load(f)
+                
+                if model_key_or_filename in voices_data:
+                    voice_info = voices_data[model_key_or_filename]
+                    for file_path in voice_info.get('files', {}).keys():
+                        if file_path.endswith('.onnx'):
+                            voice_path = os.path.join('.models', file_path)
+                            if os.path.exists(voice_path):
+                                break
+                    
+                    if not voice_path:
+                        raise FileNotFoundError(f"ONNX file not found for voice: {model_key_or_filename}")
+                else:
+                    voice_path = os.path.join('.models', model_key_or_filename)
+                    
+            except json.JSONDecodeError as e:
+                print(f"Error reading voices.json: {e}")
+                voice_path = os.path.join('.models', model_key_or_filename)
+        else:
+            voice_path = os.path.join('.models', model_key_or_filename)
+        
+        if not voice_path or not os.path.exists(voice_path):
+            raise FileNotFoundError(f"Model not found: {model_key_or_filename}")
+        
+        print(f"Loading model: {model_key_or_filename}")
+        self.tts_model = PiperVoice.load(voice_path, use_cuda=True)
+        
+        self.tts_resampler = torchaudio.transforms.Resample(
+            orig_freq=self.tts_model.config.sample_rate,
+            new_freq=self.samplerate
+        ) if self.tts_model.config.sample_rate != self.samplerate else None
+        
+        print(f"Model loaded: {model_key_or_filename}")
+
+    def _synthesize_and_buffer_text(self, text):
+        """Internal method to synthesize text and add to output buffer"""
+        if not text.strip():
+            return
+        
+        print(f"Synthesizing speech with Piper: '{text.strip()}'")
+        tts_start_time = time.time()
+        
+        wav_generator = self.tts_model.synthesize(text)
+        wav_bytes = b"".join(chunk.audio_int16_bytes for chunk in wav_generator)
+        
+        audio_output_np = np.frombuffer(wav_bytes, dtype=np.int16).astype(np.float32, copy=False) / 32767.0
+
+        tts_end_time = time.time()
+        print(f"Piper TTS synthesis took: {(tts_end_time - tts_start_time) * 1000:.2f} ms")
+        
+        resampled_for_output = self.resample_audio(
+            torch.from_numpy(audio_output_np), 
+            self.tts_model.config.sample_rate, 
+            self.samplerate
+        ).cpu().numpy()
+        
+        self.tts_output_buffer = np.concatenate([self.tts_output_buffer, resampled_for_output])
+
+    def synthesize_text(self, text):
+        """Synthesize text to speech and add to output buffer"""
+        self._synthesize_and_buffer_text(text)
