@@ -8,7 +8,7 @@ sounddevice
 silero-vad
 faster-whisper
 PyQt6
-
+scipy
 
 
 

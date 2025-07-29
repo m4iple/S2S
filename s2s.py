@@ -10,9 +10,11 @@ import numpy as np
 import threading
 import queue
 import json
+from scipy.signal import butter, lfilter
 
 def load_whisper_model():
     """Loads the Faster Whisper model."""
+    # base tiny.en
     whisper_model = faster_whisper.WhisperModel(
         'base', 
         device='cuda', 
@@ -43,12 +45,6 @@ class S2S:
         self.speech_audio_buffer = torch.empty(0)
         self.silence_counter = 0
         self.silence_threshold_frames = 5
-        
-        # Pre-create resampler to avoid recreation overhead
-        self.vad_resampler = torchaudio.transforms.Resample(
-            orig_freq=self.samplerate, 
-            new_freq=self.vad_samplerate
-        ) if self.samplerate != self.vad_samplerate else None
 
         self.device = "cuda"
         self.text_model = load_whisper_model()
@@ -87,26 +83,17 @@ class S2S:
         
         self.tts_model = PiperVoice.load(voice_path, use_cuda=True)
         
-        # Pre-create TTS output resampler for performance
-        self.tts_resampler = torchaudio.transforms.Resample(
-            orig_freq=self.tts_model.config.sample_rate,
-            new_freq=self.samplerate
-        ) if self.tts_model.config.sample_rate != self.samplerate else None
-        
         print("All models loaded.")
 
         # --- Threads ---
         self.stream = None
         self.processing_thread = None
 
-    def get_audio_devices(self):
-        return sd.query_devices()
+        self.autotume = False
+        self.softmod = True
 
-    def set_input_device(self, index):
-        self.input_device_index = index
-
-    def set_output_device(self, index):
-        self.output_device_index = index
+    def chage_softmod(self, data):
+        self.softmod = data
         
     def audio_callback(self, indata, outdata, frames, time, status):
         if status:
@@ -176,18 +163,7 @@ class S2S:
     def resample_audio(self, audio_tensor, original_rate, target_rate):
         if original_rate == target_rate:
             return audio_tensor
-        
-        # Use pre-created resampler for VAD if applicable
-        if (original_rate == self.samplerate and target_rate == self.vad_samplerate 
-            and self.vad_resampler is not None):
-            return self.vad_resampler(audio_tensor)
-        
-        # Use pre-created resampler for TTS output if applicable
-        if (original_rate == self.tts_model.config.sample_rate and target_rate == self.samplerate 
-            and self.tts_resampler is not None):
-            return self.tts_resampler(audio_tensor)
-        
-        # Create resampler for other cases
+
         resampler = torchaudio.transforms.Resample(orig_freq=original_rate, new_freq=target_rate)
         return resampler(audio_tensor)
 
@@ -222,6 +198,9 @@ class S2S:
             self.stream.stop()
             self.stream.close()
             self.stream = None
+
+            self.tts_output_buffer = np.array([], dtype=self.dtype)
+            
             print("Stream stopped.")
 
     def get_available_models(self):
@@ -340,9 +319,32 @@ class S2S:
             self.tts_model.config.sample_rate, 
             self.samplerate
         ).cpu().numpy()
-        
-        self.tts_output_buffer = np.concatenate([self.tts_output_buffer, resampled_for_output])
+        output_ready = self.audio_modifications(resampled_for_output)
+        self.tts_output_buffer = np.concatenate([self.tts_output_buffer, output_ready])
 
     def synthesize_text(self, text):
         """Synthesize text to speech and add to output buffer"""
         self._synthesize_and_buffer_text(text)
+
+    def audio_modifications(self, audio):
+        mod_start_time = time.time()
+        if self.softmod:
+            softmod_start_time = time.time()
+            def butter_lowpass(cutoff, fs, order=4):
+                nyq = 0.5 * fs
+                normal_cutoff = cutoff / nyq
+                b, a = butter(order, normal_cutoff, btype='low', analog=False)
+                return b, a
+            def lowpass_filter(data, cutoff, fs, order=4):
+                b, a = butter_lowpass(cutoff, fs, order=order)
+                y = lfilter(b, a, data)
+                return y
+            audio = lowpass_filter(audio, cutoff=4000, fs=self.samplerate, order=4)
+            softmod_end_time = time.time()
+            print(f"softmod took: {(softmod_end_time - softmod_start_time) * 1000:.2f} ms")
+        if self.autotume:
+            pass
+            
+        mod_end_time = time.time()
+        print(f"Mod took: {(mod_end_time - mod_start_time) * 1000:.2f} ms")
+        return audio
