@@ -3,6 +3,7 @@ from PyQt6.QtGui import QIcon
 from s2s import S2S
 import threading
 import keyboard
+from model_functions import get_all_models
 
 class StreamWindow(QMainWindow):
     def __init__(self):
@@ -77,11 +78,11 @@ class StreamWindow(QMainWindow):
         layout.addLayout(text_layout)
 
         # Add softmod toggle button
-        self.softmod_btn = QPushButton('Softmod: True')
+        self.softmod_btn = QPushButton('Soft Voice: True')
         self.softmod_btn.setCheckable(True)
         self.softmod_btn.setChecked(True)
         self.softmod_btn.setMinimumHeight(35)
-        self.softmod_btn.clicked.connect(self.toggle_softmod)
+        self.softmod_btn.clicked.connect(self.toggle_soft_voice)
         layout.addWidget(self.softmod_btn)
         layout.addWidget(self.toggle_btn)
 
@@ -89,17 +90,17 @@ class StreamWindow(QMainWindow):
         container.setLayout(layout)
         self.setCentralWidget(container)
 
-    def toggle_softmod(self):
+    def toggle_soft_voice(self):
         is_checked = self.softmod_btn.isChecked()
-        self.softmod_btn.setText(f'Softmod: {str(is_checked)}')
+        self.softmod_btn.setText(f'Soft Voice: {str(is_checked)}')
         try:
-            self.s2s.chage_softmod(is_checked)
+            self.s2s.chage_soft_voice(is_checked)
         except Exception as e:
-            print(f"Error changing softmod: {e}")
+            print(f"Error changing soft voice:: {e}")
 
     def populate_models(self):
         """Populate the model dropdown with available models"""
-        models = self.s2s.get_available_models()
+        models = get_all_models()
         self.model_combo.clear()
         
         if not models:
