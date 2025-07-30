@@ -11,7 +11,7 @@ import queue
 import os
 from model_functions import get_model_path
 
-from scipy.signal import butter, lfilter
+from scipy.signal import butter, lfilter, resample
 
 def load_whisper_model():
     """Loads the Faster Whisper model."""
@@ -24,7 +24,7 @@ def load_whisper_model():
     return whisper_model
 
 class S2S:
-    def __init__(self):
+    def __init__(self, subtitle_window=None):
         # ---  Onix Settings ---
         os.environ['ORT_ENABLE_CUDA_GRAPH'] = '1'  # Enable CUDA graph optimization
         os.environ['ORT_DISABLE_ALL_OPTIMIZATION'] = '0'  # Ensure optimizations are enabled
@@ -71,11 +71,57 @@ class S2S:
 
         # --- Voice modification settings --
         self.soft_voice = True
-        self.auto_tume = False
+        self.faster = True
+        self.auto_tune = False
+
+        # --- Subtitle UI ---
+        self.subtitle_window = subtitle_window
 
     def chage_soft_voice(self, data):
         """Toggle the Soft Voice"""
         self.soft_voice = data
+
+    def start_stream(self):
+        """Start the audio Stream"""
+        if self.stream is None:
+            try:
+                self.is_running.set()
+                self.processing_thread = threading.Thread(target=self._processing_loop)
+                self.processing_thread.start()
+
+                self.stream = sd.Stream(
+                    device=(self.input_device_index, self.output_device_index),
+                    samplerate=self.samplerate,
+                    blocksize=self.blocksize,
+                    dtype=self.dtype,
+                    channels=self.channels,
+                    callback=self.audio_callback,
+                )
+                self.stream.start()
+                print("Stream started.")
+            except Exception as e:
+                print(f"Error starting stream: {e}")
+
+    def stop_stream(self):
+        """Ends the audio Stream"""
+        if self.stream is not None:
+            self.is_running.clear()
+            
+            if self.processing_thread:
+                self.processing_thread.join(timeout=2)
+                self.processing_thread = None
+
+            self.stream.stop()
+            self.stream.close()
+            self.stream = None
+
+            self.tts_output_buffer = np.array([], dtype=self.dtype)
+            
+            print("Stream stopped.")
+
+            # Clear subtitle when stream ends
+            if self.subtitle_window:
+                 self.subtitle_window.clear_subtitle()
         
     def audio_callback(self, indata, outdata, frames, time, status):
         """Stream audio callback"""
@@ -150,7 +196,7 @@ class S2S:
 
     def whisper_transcribe(self, audio):
         stt_start_time = time.time() # DEBUG Start Whisper Timer
-        segments, _ = self.text_model.transcribe(audio, beam_size=5) # TODO  DEBUG it seems the model is getting bad audio
+        segments, _ = self.text_model.transcribe(audio, language="en", beam_size=5) # TODO  DEBUG it seems the model is getting bad audio
         stt_end_time = time.time() # DEBUG End Whisper Timer
         print(f"Whisper transcription took: {(stt_end_time - stt_start_time) * 1000:.2f} ms")
         return "".join(segment.text for segment in segments)
@@ -161,44 +207,6 @@ class S2S:
 
         resampler = torchaudio.transforms.Resample(orig_freq=original_rate, new_freq=target_rate)
         return resampler(audio_tensor)
-
-    def start_stream(self):
-        """Start the audio Stream"""
-        if self.stream is None:
-            try:
-                self.is_running.set()
-                self.processing_thread = threading.Thread(target=self._processing_loop)
-                self.processing_thread.start()
-
-                self.stream = sd.Stream(
-                    device=(self.input_device_index, self.output_device_index),
-                    samplerate=self.samplerate,
-                    blocksize=self.blocksize,
-                    dtype=self.dtype,
-                    channels=self.channels,
-                    callback=self.audio_callback,
-                )
-                self.stream.start()
-                print("Stream started.")
-            except Exception as e:
-                print(f"Error starting stream: {e}")
-
-    def stop_stream(self):
-        """Ends the audio Stream"""
-        if self.stream is not None:
-            self.is_running.clear()
-            
-            if self.processing_thread:
-                self.processing_thread.join(timeout=2)
-                self.processing_thread = None
-
-            self.stream.stop()
-            self.stream.close()
-            self.stream = None
-
-            self.tts_output_buffer = np.array([], dtype=self.dtype)
-            
-            print("Stream stopped.")
 
     def set_model(self, model):
         """Switch to a different TTS model"""
@@ -231,8 +239,11 @@ class S2S:
         resampled_for_output = self.resample_audio(torch.from_numpy(audio_output_np), self.tts_model.config.sample_rate, self.samplerate).cpu().numpy()
 
         output_ready = self.audio_modifications(resampled_for_output)
-
+       
         self.tts_output_buffer = np.concatenate([self.tts_output_buffer, output_ready])
+
+        if self.subtitle_window:
+            self.subtitle_window.set_subtitle(text.strip())
 
     def synthesize_text(self, text):
         """Synthesize text to speech and add to output buffer"""
@@ -262,8 +273,15 @@ class S2S:
 
             soft_voice_end_time = time.time() # DEBUG End soft_voice Timer
             print(f"softmod took: {(soft_voice_end_time - soft_voice_start_time) * 1000:.2f} ms")
-        if self.autotume:
+        
+        if self.auto_tune:
             pass
+
+        if self.faster:
+            # Speed up audio by 10%
+            speed_factor = 1.04
+            new_length = int(len(audio) / speed_factor)
+            audio = resample(audio, new_length)
             
         mod_end_time = time.time() # DEBUG End mod Timer
         print(f"Mod took: {(mod_end_time - mod_start_time) * 1000:.2f} ms")

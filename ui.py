@@ -1,18 +1,19 @@
-from PyQt6.QtWidgets import QMainWindow, QPushButton, QComboBox, QLabel, QHBoxLayout, QVBoxLayout, QWidget, QSystemTrayIcon, QTextEdit
-from PyQt6.QtGui import QIcon
+from PyQt6.QtWidgets import QMainWindow, QPushButton, QComboBox, QLabel, QHBoxLayout, QVBoxLayout, QWidget, QSystemTrayIcon, QTextEdit, QApplication
+from PyQt6.QtGui import QIcon, QFont, QFontDatabase
 from s2s import S2S
+from subtitles_ui import SubtitleWindow
+from model_functions import get_all_models
 import threading
 import keyboard
-from model_functions import get_all_models
+import os
 
 class StreamWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle('S2S Audio Stream')
-        self.resize(400, 350)
-        self.setMinimumSize(400, 350)
-        self.s2s = S2S()
-        
+        self.resize(400, 400)
+        self.setMinimumSize(400, 400)
+
         # --- Window Icon ---
         self.setWindowIcon(QIcon("icon.ico"))
 
@@ -20,6 +21,12 @@ class StreamWindow(QMainWindow):
         self.tray_icon = QSystemTrayIcon(QIcon("icon.ico"), self)
         self.tray_icon.setToolTip("S2S Audio Stream")
         self.tray_icon.show()
+
+        self.subtitle_window = SubtitleWindow()
+        self.subtitle_window.show()
+        
+        # Initialize S2S with the subtitle window
+        self.s2s = S2S(subtitle_window=self.subtitle_window)
 
         self.init_ui()
 
@@ -57,6 +64,16 @@ class StreamWindow(QMainWindow):
         model_layout.addWidget(model_label)
         model_layout.addWidget(self.model_combo)
 
+        # Font selection
+        font_layout = QHBoxLayout()
+        font_label = QLabel('Subtitle Font:')
+        self.font_combo = QComboBox()
+        self.font_combo.setMinimumHeight(30)
+        self.populate_fonts()
+        self.font_combo.currentTextChanged.connect(self.change_font)
+        font_layout.addWidget(font_label)
+        font_layout.addWidget(self.font_combo)
+
         # Manual text input
         text_layout = QVBoxLayout()
         text_label = QLabel('Manual Text Input:')
@@ -75,6 +92,7 @@ class StreamWindow(QMainWindow):
         layout.setSpacing(15)
         layout.setContentsMargins(20, 20, 20, 20)
         layout.addLayout(model_layout)
+        layout.addLayout(font_layout)
         layout.addLayout(text_layout)
 
         # Add softmod toggle button
@@ -89,6 +107,39 @@ class StreamWindow(QMainWindow):
         container = QWidget()
         container.setLayout(layout)
         self.setCentralWidget(container)
+
+    def populate_fonts(self):
+        """Populate the font dropdown with fonts from .fonts folder only"""
+
+        self.font_combo.clear()
+        current_font_name = self.subtitle_window.label.font().family()
+
+        fonts_folder = os.path.join(os.path.dirname(__file__), '.fonts')
+        if os.path.isdir(fonts_folder):
+            font_index_to_select = 0
+            for i, file in enumerate(os.listdir(fonts_folder)):
+                if file.lower().endswith(('.ttf', '.otf')):
+                    font_path = os.path.join(fonts_folder, file)
+                    ids = QFontDatabase.addApplicationFont(font_path)
+                    if ids != -1:
+                        loaded_fonts = QFontDatabase.applicationFontFamilies(ids)
+                        for loaded_font in loaded_fonts:
+                            self.font_combo.addItem(loaded_font)
+                            # If this matches the current font, remember its index
+                            if loaded_font == current_font_name:
+                                font_index_to_select = self.font_combo.count() - 1
+            
+            # Set the combo box to the current font being used
+            if self.font_combo.count() > 0:
+                self.font_combo.setCurrentIndex(font_index_to_select)
+
+    def change_font(self):
+        """Change the font of the subtitle window"""
+        font_name = self.font_combo.currentText()
+        if font_name:
+            font = QFont(font_name)
+            font.setPointSize(24)  # Keep the same font size
+            self.subtitle_window.label.setFont(font)
 
     def toggle_soft_voice(self):
         is_checked = self.softmod_btn.isChecked()
@@ -155,3 +206,4 @@ class StreamWindow(QMainWindow):
         else:
             self.toggle_btn.setText('Start Stream')
             self.s2s.stop_stream()
+            self.subtitle_window.clear_subtitle()

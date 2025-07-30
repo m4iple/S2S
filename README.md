@@ -7,9 +7,9 @@ https://huggingface.co/rhasspy/piper-voices/tree/main
 conda activate s2s_env
 
 todo:
-- bigger ui?
-- icon
-- create a seperate window for the subtitles, show the text after the tts is compete, add being able to change the font
+- create a debug window, and pretty print the now print statement in a scroll box
+ - cann be toggled by a self.debug = True toggle
+ - will contain timing and other debug functons
 
 
 Added comments so my dumbass does not forget
