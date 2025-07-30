@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QMainWindow, QLabel
+from PyQt6.QtWidgets import QMainWindow, QLabel, QSystemTrayIcon
 from PyQt6.QtGui import QIcon, QFont
 from PyQt6.QtCore import Qt, QTimer
 
@@ -10,11 +10,19 @@ class SubtitleWindow(QMainWindow):
         self.resize(1920,330)
         self.setMinimumSize(1920, 330)
         self.setWindowIcon(QIcon("icon.ico"))
+        self.setStyleSheet("background-color: green;")
+
+        # --- System Tray Icon ---
+        self.tray_icon = QSystemTrayIcon(QIcon("icon.ico"), self)
+        self.tray_icon.setToolTip("S2S Audio Stream")
+        self.tray_icon.show()
+
         self.label = QLabel('', self)
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.label.setWordWrap(True)  # Enable word wrapping
-        self.label.setContentsMargins(20, 10, 20, 10)  # Add some padding
-        self.label.setStyleSheet("QLabel { padding: 10px; }")  # Additional padding via stylesheet
+        self.label.setContentsMargins(20, 0, 20, 0)  # Padding left/right, no top/bottom
+        self.label.setStyleSheet("QLabel { padding: 0px; }")  # Remove extra padding
+        self.label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)  # Top and horizontally centered
         
         # Load fonts from .fonts folder and set default
         self.load_custom_fonts()
