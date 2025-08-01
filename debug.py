@@ -54,7 +54,7 @@ class DebugTimer:
         
         # Define the order we want to display timings
         timing_order = [
-            'complete', 'buffer_prep', 'transcription_total', 'whisper', 'tts', 'resample', 'audio_mod', 'buffer_ops'
+            'complete', 'buffer_prep', 'transcription_total', 'stt', 'tts', 'resample', 'audio_mod', 'buffer_ops'
         ]
         
         total_measured = 0

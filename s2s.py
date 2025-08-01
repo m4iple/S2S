@@ -18,9 +18,10 @@ def load_whisper_model():
     """Loads the Faster Whisper model."""
     # base tiny.en
     whisper_model = faster_whisper.WhisperModel(
-        'large-v3-turbo', 
+        'distil-large-v3', 
         device='cuda', 
-        compute_type='float16'
+        compute_type='float16',
+        num_workers=2
     )
     return whisper_model
 
@@ -57,8 +58,10 @@ class S2S:
         self.silence_counter = 0
         self.silence_threshold_frames = 5
 
-        # --- Whisper settings ---
+        # --- stt settings ---
         self.text_model = load_whisper_model()
+
+        # --- Piper settings ---
         print("Loading Piper TTS model...")
         default_voice = 'en_US-hfc_female-medium'
         voice_path = get_model_path(default_voice)
@@ -69,6 +72,10 @@ class S2S:
         # --- Threads ---
         self.stream = None
         self.processing_thread = None
+        
+        # --- Monitoring device ---
+        self.monitoring_device_index = 22
+        self.monitoring_stream = None
 
         # --- Voice modification settings --
         self.voice_soft = True
@@ -108,6 +115,22 @@ class S2S:
                     callback=self.audio_callback,
                 )
                 self.stream.start()
+                
+                # Initialize monitoring stream for device 22
+                try:
+                    self.monitoring_stream = sd.OutputStream(
+                        device=self.monitoring_device_index,
+                        samplerate=self.samplerate,
+                        blocksize=self.blocksize,
+                        dtype=self.dtype,
+                        channels=self.channels,
+                    )
+                    self.monitoring_stream.start()
+                    print(f"Monitoring stream started on device {self.monitoring_device_index}.")
+                except Exception as e:
+                    print(f"Warning: Could not start monitoring stream on device {self.monitoring_device_index}: {e}")
+                    self.monitoring_stream = None
+                
                 print("Stream started.")
             except Exception as e:
                 print(f"Error starting stream: {e}")
@@ -124,6 +147,16 @@ class S2S:
             self.stream.stop()
             self.stream.close()
             self.stream = None
+            
+            # Stop and close monitoring stream
+            if self.monitoring_stream is not None:
+                try:
+                    self.monitoring_stream.stop()
+                    self.monitoring_stream.close()
+                    self.monitoring_stream = None
+                    print("Monitoring stream stopped.")
+                except Exception as e:
+                    print(f"Error stopping monitoring stream: {e}")
 
             self.tts_output_buffer = np.array([], dtype=self.dtype)
             
@@ -149,6 +182,15 @@ class S2S:
             self.tts_output_buffer = np.array([], dtype=self.dtype)
         else:
             outdata[:] = 0
+
+        # duplicate output to device 22 for monitoring
+        if hasattr(self, 'monitoring_stream') and self.monitoring_stream is not None:
+            try:
+                # Send the same audio data to device 22 for monitoring
+                self.monitoring_stream.write(outdata.copy())
+            except Exception as e:
+                print(f"Error writing to monitoring device: {e}")
+
 
     def _processing_loop(self):
         """Processing thread"""
@@ -212,14 +254,14 @@ class S2S:
                 print(f"Error in processing loop: {e}")
 
     def whisper_transcribe(self, audio):
-        start_timer('whisper')
+        start_timer('stt')
         
         segments, _ = self.text_model.transcribe(audio, language="en", beam_size=5)
         
         segments_list = list(segments) # shit takes too long over 300ms!
         result = "".join([segment.text for segment in segments_list])
         
-        end_timer('whisper')
+        end_timer('stt')
         return result
 
     def resample_audio(self, audio_tensor, original_rate, target_rate):

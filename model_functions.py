@@ -1,8 +1,10 @@
 import os
 import json
 
+tts_model_path = '.models/tts'
+
 def get_model_path(model):
-    voices_json_path = '.models/voices.json'
+    voices_json_path = tts_model_path + '/voices.json'
     if os.path.exists(voices_json_path):
         try:
             with open(voices_json_path, 'r', encoding='utf-8') as f:
@@ -12,7 +14,7 @@ def get_model_path(model):
                 voice_info = voices_data[model]
                 for file_path in voice_info.get('files', {}).keys():
                     if file_path.endswith('.onnx'):
-                        test_path = os.path.join('.models', file_path)
+                        test_path = os.path.join(tts_model_path, file_path)
                         if os.path.exists(test_path):
                             voice_path = test_path
                             break
@@ -25,9 +27,9 @@ def get_model_path(model):
     return voice_path
 
 def get_all_models():
-    voices_json_path = '.models/voices.json'
+    voices_json_path = tts_model_path + '/voices.json'
     if not os.path.exists(voices_json_path):
-        models_dir = '.models'
+        models_dir = tts_model_path
         if not os.path.exists(models_dir):
             return []
     
@@ -40,7 +42,7 @@ def get_all_models():
             onnx_file_path = None
             for file_path in voice_info.get('files', {}).keys():
                 if file_path.endswith('.onnx'):
-                    full_path = os.path.join('.models', file_path)
+                    full_path = os.path.join(tts_model_path, file_path)
                     if os.path.exists(full_path):
                         onnx_file_path = file_path
                         break
