@@ -239,8 +239,6 @@ class S2S:
                                 
                                 text = self.whisper_transcribe(audio_to_process)
 
-                                print(f"Transcribed: '{text.strip()}'")
-
                                 if text.strip():
                                     start_timer('synthesis_total')
                                     self._synthesize_and_buffer_text(text)
@@ -284,8 +282,7 @@ class S2S:
         """Internal method to synthesize text and add to output buffer"""
         if not text.strip():
             return
-        
-        print(f"Synthesizing speech with Piper: '{text.strip()}'")
+
         start_timer('tts')
         
         wav_generator = self.tts_model.synthesize(text)

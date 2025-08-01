@@ -1,9 +1,13 @@
 from PyQt6.QtWidgets import QMainWindow, QLabel, QSystemTrayIcon
-from PyQt6.QtGui import QIcon, QFont
-from PyQt6.QtCore import Qt, QTimer
-
+from PyQt6.QtGui import QIcon, QFont, QFontDatabase
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QMetaObject, Q_ARG
+import os
 
 class SubtitleWindow(QMainWindow):
+    # Signals for thread-safe subtitle updates
+    subtitle_update_signal = pyqtSignal(str)
+    subtitle_clear_signal = pyqtSignal()
+    
     def __init__(self):
         super().__init__()
         self.setWindowTitle('Subtitles')
@@ -33,12 +37,14 @@ class SubtitleWindow(QMainWindow):
         self.fade_timer.timeout.connect(self.auto_clear_subtitle)
         self.fade_duration = 10000  # 10 seconds in milliseconds
         
+        # Connect signals to slots for thread-safe updates
+        self.subtitle_update_signal.connect(self._update_subtitle_internal)
+        self.subtitle_clear_signal.connect(self._clear_subtitle_internal)
+        
         self.setCentralWidget(self.label)
 
     def load_custom_fonts(self):
         """Load fonts from .fonts folder and set the first one as default"""
-        import os
-        from PyQt6.QtGui import QFontDatabase
         
         fonts_folder = os.path.join(os.path.dirname(__file__), '.fonts')
         font_loaded = False
@@ -119,7 +125,12 @@ class SubtitleWindow(QMainWindow):
         return '\n'.join(lines)
 
     def set_subtitle(self, text):
-        print(text)
+        """Thread-safe method to set subtitle text"""
+        # Emit signal to update subtitle in main thread
+        self.subtitle_update_signal.emit(text)
+    
+    def _update_subtitle_internal(self, text):
+        """Internal method that runs in the main thread"""
         formatted_text = self.format_subtitle_text(text)
         self.label.setText(formatted_text)
         
@@ -133,5 +144,11 @@ class SubtitleWindow(QMainWindow):
         self.label.setText('')
 
     def clear_subtitle(self):
+        """Thread-safe method to clear subtitle text"""
+        # Emit signal to clear subtitle in main thread
+        self.subtitle_clear_signal.emit()
+    
+    def _clear_subtitle_internal(self):
+        """Internal method that runs in the main thread"""
         self.fade_timer.stop()  # Stop the timer when manually clearing
         self.label.setText('')
