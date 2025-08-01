@@ -10,8 +10,9 @@ import threading
 import queue
 import os
 from model_functions import get_model_path
+from debug import start_timer, end_timer, print_timing_summary
 
-from scipy.signal import butter, lfilter, resample
+from scipy.signal import resample
 
 def load_whisper_model():
     """Loads the Faster Whisper model."""
@@ -70,16 +71,25 @@ class S2S:
         self.processing_thread = None
 
         # --- Voice modification settings --
-        self.soft_voice = True
-        self.faster = True
-        self.auto_tune = False
+        self.voice_soft = True
+        self.voice_speed = 1.0
+        self.voice_tune = False
 
         # --- Subtitle UI ---
         self.subtitle_window = subtitle_window
 
-    def chage_soft_voice(self, data):
+    def chage_voice_soft(self, data):
         """Toggle the Soft Voice"""
-        self.soft_voice = data
+        self.voice_soft = data
+
+    def change_voice_speed(self, data):
+        """Change the Speed of the TTS Voice"""
+        self.voice_speed = data
+
+    def set_debug_mode(self, enabled):
+        """Enable or disable debug timing"""
+        from debug import set_debug
+        set_debug(enabled)
 
     def start_stream(self):
         """Start the audio Stream"""
@@ -176,30 +186,41 @@ class S2S:
                             # Waits for the Silence to be longer than the threshold
                             if self.silence_counter > self.silence_threshold_frames:
                                 self.is_speaking = False
-                                complete_time_start = time.time() # DEBUG Start Complete Timer
+                                start_timer('complete')
+                                
                                 # reset the speach buffer and counter
+                                start_timer('buffer_prep')
                                 audio_to_process = self.speech_audio_buffer.clone().cpu().numpy()
                                 self.speech_audio_buffer = torch.empty(0)
                                 self.silence_counter = 0
+                                end_timer('buffer_prep')
                                 
                                 text = self.whisper_transcribe(audio_to_process)
+
                                 print(f"Transcribed: '{text.strip()}'")
 
                                 if text.strip():
+                                    start_timer('synthesis_total')
                                     self._synthesize_and_buffer_text(text)
-                                    complete_time_end = time.time() # DEBUG End Complete Timer
-                                    print(f"Complete synthesis took: {(complete_time_end - complete_time_start) * 1000:.2f} ms")
+                                    end_timer('synthesis_total')
+                                
+                                end_timer('complete')
+                                print_timing_summary(text.strip())
             except queue.Empty:
                 continue
             except Exception as e:
                 print(f"Error in processing loop: {e}")
 
     def whisper_transcribe(self, audio):
-        stt_start_time = time.time() # DEBUG Start Whisper Timer
-        segments, _ = self.text_model.transcribe(audio, language="en", beam_size=5) # TODO  DEBUG it seems the model is getting bad audio
-        stt_end_time = time.time() # DEBUG End Whisper Timer
-        print(f"Whisper transcription took: {(stt_end_time - stt_start_time) * 1000:.2f} ms")
-        return "".join(segment.text for segment in segments)
+        start_timer('whisper')
+        
+        segments, _ = self.text_model.transcribe(audio, language="en", beam_size=5)
+        
+        segments_list = list(segments) # shit takes too long over 300ms!
+        result = "".join([segment.text for segment in segments_list])
+        
+        end_timer('whisper')
+        return result
 
     def resample_audio(self, audio_tensor, original_rate, target_rate):
         if original_rate == target_rate:
@@ -223,7 +244,7 @@ class S2S:
             return
         
         print(f"Synthesizing speech with Piper: '{text.strip()}'")
-        tts_start_time = time.time() # DEBUG start tts Timer
+        start_timer('tts')
         
         wav_generator = self.tts_model.synthesize(text)
 
@@ -232,15 +253,18 @@ class S2S:
         
         audio_output_np = np.frombuffer(wav_bytes, dtype=np.int16).astype(np.float32, copy=False) / 32767.0
 
-        tts_end_time = time.time() # DEBUG End tts Timer
-        print(f"Piper TTS synthesis took: {(tts_end_time - tts_start_time) * 1000:.2f} ms")
+        end_timer('tts')
         
         # Resample the audio back to the Stream sample rate
+        start_timer('resample')
         resampled_for_output = self.resample_audio(torch.from_numpy(audio_output_np), self.tts_model.config.sample_rate, self.samplerate).cpu().numpy()
+        end_timer('resample')
 
         output_ready = self.audio_modifications(resampled_for_output)
        
+        start_timer('buffer_ops')
         self.tts_output_buffer = np.concatenate([self.tts_output_buffer, output_ready])
+        end_timer('buffer_ops')
 
         if self.subtitle_window:
             self.subtitle_window.set_subtitle(text.strip())
@@ -251,38 +275,15 @@ class S2S:
 
     def audio_modifications(self, audio):
         """modifies audio data"""
-        mod_start_time = time.time() # DEBUG start mod Timer
-        if self.soft_voice:
-            soft_voice_start_time = time.time() # DEBUG start soft_voice Timer
-
-            # Define a Butterworth low-pass filter
-            def butter_lowpass(cutoff, fs, order=4):
-                nyq = 0.5 * fs  # Nyquist frequency
-                normal_cutoff = cutoff / nyq  # Normalized cutoff frequency
-                b, a = butter(order, normal_cutoff, btype='low', analog=False)
-                return b, a
-
-            # Apply the low-pass filter to the audio data
-            def lowpass_filter(data, cutoff, fs, order=4):
-                b, a = butter_lowpass(cutoff, fs, order=order)
-                y = lfilter(b, a, data)
-                return y
-
-            # Filter the audio to soften the voice (reduce high frequencies)
-            audio = lowpass_filter(audio, cutoff=4000, fs=self.samplerate, order=4)
-
-            soft_voice_end_time = time.time() # DEBUG End soft_voice Timer
-            print(f"softmod took: {(soft_voice_end_time - soft_voice_start_time) * 1000:.2f} ms")
+        start_timer('audio_mod')
+        if self.voice_soft:
+            pass
         
-        if self.auto_tune:
+        if self.voice_tune:
             pass
 
-        if self.faster:
-            # Speed up audio by 10%
-            speed_factor = 1.04
-            new_length = int(len(audio) / speed_factor)
-            audio = resample(audio, new_length)
+        new_length = int(len(audio) / self.voice_speed)
+        audio = resample(audio, new_length)
             
-        mod_end_time = time.time() # DEBUG End mod Timer
-        print(f"Mod took: {(mod_end_time - mod_start_time) * 1000:.2f} ms")
+        end_timer('audio_mod')
         return audio

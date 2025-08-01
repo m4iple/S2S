@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QMainWindow, QPushButton, QComboBox, QLabel, QHBoxLayout, QVBoxLayout, QWidget, QSystemTrayIcon, QTextEdit
+from PyQt6.QtWidgets import QMainWindow, QPushButton, QComboBox, QLabel, QHBoxLayout, QVBoxLayout, QWidget, QSystemTrayIcon, QTextEdit, QDoubleSpinBox
 from PyQt6.QtGui import QIcon, QFont, QFontDatabase
 from s2s import S2S
 from subtitles_ui import SubtitleWindow
@@ -46,13 +46,15 @@ class StreamWindow(QMainWindow):
         keyboard.wait()
 
     def _global_toggle_stream(self):
-        self.toggle_btn.click()
+        self.stream_btn.click()
 
     def init_ui(self):
-        self.toggle_btn = QPushButton('Start Stream')
-        self.toggle_btn.setCheckable(True)
-        self.toggle_btn.setMinimumHeight(40)
-        self.toggle_btn.clicked.connect(self.toggle_stream)
+        stream_layout = QHBoxLayout()
+        self.stream_btn = QPushButton('Start Stream')
+        self.stream_btn.setCheckable(True)
+        self.stream_btn.setMinimumHeight(40)
+        self.stream_btn.clicked.connect(self.toggle_stream)
+        stream_layout = (self.stream_btn)
 
         # Model selection
         model_layout = QHBoxLayout()
@@ -63,6 +65,27 @@ class StreamWindow(QMainWindow):
         self.model_combo.currentTextChanged.connect(self.change_model)
         model_layout.addWidget(model_label)
         model_layout.addWidget(self.model_combo)
+
+        # Voice Modification Configs
+        voice_layout = QHBoxLayout()
+        # Soft voice
+        self.voice_soft_btn = QPushButton('Soft Voice: True')
+        self.voice_soft_btn.setCheckable(True)
+        self.voice_soft_btn.setChecked(True)
+        self.voice_soft_btn.setMinimumHeight(35)
+        self.voice_soft_btn.clicked.connect(self.toggle_voice_soft)
+        voice_layout.addWidget(self.voice_soft_btn)
+        # TTS speed
+        self.voice_speed_spin = QDoubleSpinBox()
+        self.voice_speed_spin.setMinimum(0.5)
+        self.voice_speed_spin.setMaximum(2.0)
+        self.voice_speed_spin.setSingleStep(0.01)
+        self.voice_speed_spin.setValue(1.0)
+        self.voice_speed_spin.setDecimals(2)
+        self.voice_speed_spin.setSuffix("x")
+        self.voice_speed_spin.setMinimumHeight(35)
+        self.voice_speed_spin.valueChanged.connect(self.change_voice_speed)
+        voice_layout.addWidget(self.voice_speed_spin)
 
         # Font selection
         font_layout = QHBoxLayout()
@@ -92,17 +115,10 @@ class StreamWindow(QMainWindow):
         layout.setSpacing(15)
         layout.setContentsMargins(20, 20, 20, 20)
         layout.addLayout(model_layout)
+        layout.addLayout(voice_layout)
         layout.addLayout(font_layout)
         layout.addLayout(text_layout)
-
-        # Add softmod toggle button
-        self.softmod_btn = QPushButton('Soft Voice: True')
-        self.softmod_btn.setCheckable(True)
-        self.softmod_btn.setChecked(True)
-        self.softmod_btn.setMinimumHeight(35)
-        self.softmod_btn.clicked.connect(self.toggle_soft_voice)
-        layout.addWidget(self.softmod_btn)
-        layout.addWidget(self.toggle_btn)
+        layout.addWidget(stream_layout)
 
         container = QWidget()
         container.setLayout(layout)
@@ -141,13 +157,21 @@ class StreamWindow(QMainWindow):
             font.setPointSize(24)  # Keep the same font size
             self.subtitle_window.label.setFont(font)
 
-    def toggle_soft_voice(self):
-        is_checked = self.softmod_btn.isChecked()
-        self.softmod_btn.setText(f'Soft Voice: {str(is_checked)}')
+    def toggle_voice_soft(self):
+        """Toggle the soft voice"""
+        is_checked = self.voice_soft_btn.isChecked()
+        self.voice_soft_btn.setText(f'Soft Voice: {str(is_checked)}')
         try:
-            self.s2s.chage_soft_voice(is_checked)
+            self.s2s.chage_voice_soft(is_checked)
         except Exception as e:
             print(f"Error changing soft voice:: {e}")
+    
+    def change_voice_speed(self):
+        value = self.voice_speed_spin.value()
+        try:
+            self.s2s.change_voice_speed(value)
+        except Exception as e:
+            print(f"Error changing voice speed:: {e}")
 
     def populate_models(self):
         """Populate the model dropdown with available models"""
@@ -200,10 +224,11 @@ class StreamWindow(QMainWindow):
                 print(f"Error synthesizing text: {e}")
 
     def toggle_stream(self):
-        if self.toggle_btn.isChecked():
-            self.toggle_btn.setText('Stop Stream')
+        """Toggles the Voice Stream"""
+        if self.stream_btn.isChecked():
+            self.stream_btn.setText('Stop Stream')
             self.s2s.start_stream()
         else:
-            self.toggle_btn.setText('Start Stream')
+            self.stream_btn.setText('Start Stream')
             self.s2s.stop_stream()
             self.subtitle_window.clear_subtitle()
