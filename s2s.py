@@ -19,9 +19,9 @@ def load_whisper_model():
     # base tiny.en
     whisper_model = faster_whisper.WhisperModel(
         'distil-large-v3', 
-        device='cuda', 
-        compute_type='float16',
-        num_workers=2
+        device = 'cuda', 
+        compute_type = 'float16',
+        num_workers = 4
     )
     return whisper_model
 
@@ -56,10 +56,11 @@ class S2S:
         self.is_speaking = False
         self.speech_audio_buffer = torch.empty(0)
         self.silence_counter = 0
-        self.silence_threshold_frames = 5
+        self.silence_threshold_frames = 3 # x * 512 / 16000 = 96ms
 
         # --- stt settings ---
         self.text_model = load_whisper_model()
+        self.whisper_prompt = "The quick brown fox jumps over the lazy dog. She sells seashells by the seashore. Charles and Philip watched the game with zeal."
 
         # --- Piper settings ---
         print("Loading Piper TTS model...")
@@ -253,11 +254,23 @@ class S2S:
 
     def whisper_transcribe(self, audio):
         start_timer('stt')
+
+        segments, _ = self.text_model.transcribe(
+            audio, 
+            language = "en", 
+            beam_size = 1,
+            word_timestamps = True,
+            initial_prompt = self.whisper_prompt
+        )
+
+        full_text = []
+
+        for segment in segments:
+            segment_text = segment.text
+            
+            full_text.append(segment_text)
         
-        segments, _ = self.text_model.transcribe(audio, language="en", beam_size=5)
-        
-        segments_list = list(segments) # shit takes too long over 300ms!
-        result = "".join([segment.text for segment in segments_list])
+        result = "".join(full_text).strip()
         
         end_timer('stt')
         return result
