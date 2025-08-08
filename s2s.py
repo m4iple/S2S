@@ -18,10 +18,9 @@ def load_whisper_model():
     """Loads the Faster Whisper model."""
     # base tiny.en
     whisper_model = faster_whisper.WhisperModel(
-        'distil-large-v3', 
+        'large-v2', 
         device = 'cuda', 
-        compute_type = 'float16',
-        num_workers = 4
+        compute_type = 'int8_float16'
     )
     return whisper_model
 
@@ -258,17 +257,18 @@ class S2S:
         segments, _ = self.text_model.transcribe(
             audio, 
             language = "en", 
-            beam_size = 1,
+            beam_size = 5,
             word_timestamps = True,
-            initial_prompt = self.whisper_prompt
+            vad_filter = False,
+            #initial_prompt = self.whisper_prompt
         )
+        full_text = list(segments)
+        #full_text = []
 
-        full_text = []
-
-        for segment in segments:
-            segment_text = segment.text
+        #for segment in segments:
+        #    segment_text = segment.text
             
-            full_text.append(segment_text)
+        #    full_text.append(segment_text)
         
         result = "".join(full_text).strip()
         
