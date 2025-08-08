@@ -232,3 +232,24 @@ class StreamWindow(QMainWindow):
             self.stream_btn.setText('Start Stream')
             self.s2s.stop_stream()
             self.subtitle_window.clear_subtitle()
+
+    def closeEvent(self, event):
+        """Handle window close event - close subtitle window and clean up"""
+        try:
+            # Stop the stream if it's running
+            if hasattr(self, 's2s'):
+                self.s2s.stop_stream()
+            
+            # Close the subtitle window
+            if hasattr(self, 'subtitle_window'):
+                self.subtitle_window.close()
+            
+            # Hide the system tray icon
+            if hasattr(self, 'tray_icon'):
+                self.tray_icon.hide()
+            
+        except Exception as e:
+            print(f"Error during cleanup: {e}")
+        
+        # Accept the close event
+        event.accept()
