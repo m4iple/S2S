@@ -4,6 +4,10 @@ Debug module for S2S - Performance timing and debugging utilities
 import time
 from collections import defaultdict
 from contextlib import contextmanager
+import os
+import torch
+import numpy as np
+import wave
 
 # Global debug flag
 DEBUG = True
@@ -15,6 +19,7 @@ class DebugTimer:
         self.current_session = {}  # Current timing session
         self.history = defaultdict(list)  # Historical timing data
         self.active_timers = {}  # Currently running timers
+        self.temp_path = "./.temp"
     
     def start_timer(self, name):
         """Start a named timer"""
@@ -54,7 +59,7 @@ class DebugTimer:
         
         # Define the order we want to display timings
         timing_order = [
-            'complete', 'buffer_prep', 'transcription_total', 'stt', 'tts', 'resample', 'audio_mod', 'buffer_ops'
+            'complete', 'buffer_prep', 'transcription_total', 'stt', "stt_text", 'tts', 'resample', 'audio_mod', 'buffer_ops'
         ]
         
         total_measured = 0
@@ -98,6 +103,56 @@ class DebugTimer:
         finally:
             self.end_timer(name)
 
+    def save_audio(self, audio_data):
+        if not DEBUG:
+            return
+
+        # Ensure temp path exists
+        os.makedirs(self.temp_path, exist_ok=True)
+
+        # Generate unique filename
+        temp_file = os.path.join(self.temp_path, f"audio_{int(time.time() * 1000)}.wav")
+        try:
+            # Handle torch tensor input
+            if isinstance(audio_data, torch.Tensor):
+                audio_np = audio_data.cpu().numpy()
+            # Handle numpy array input
+            elif isinstance(audio_data, np.ndarray):
+                audio_np = audio_data
+            else:
+                print(f"Unsupported audio data type: {type(audio_data)}")
+                return
+
+            # Ensure audio is 1D (mono)
+            if audio_np.ndim > 1:
+                # Take first channel if multi-channel
+                audio_np = audio_np[:, 0] if audio_np.shape[1] < audio_np.shape[0] else audio_np[0, :]
+            
+            # Ensure audio is in the range [-1, 1] for float32 data
+            if audio_np.dtype == np.float32 or audio_np.dtype == np.float64:
+                # Clip to prevent overflow
+                audio_np = np.clip(audio_np, -1.0, 1.0)
+                # Convert to int16
+                audio_int16 = np.int16(audio_np * 32767)
+            elif audio_np.dtype == np.int16:
+                audio_int16 = audio_np
+            else:
+                # For other types, assume they're in range [-1, 1] and convert
+                audio_np = audio_np.astype(np.float32)
+                audio_np = np.clip(audio_np, -1.0, 1.0)
+                audio_int16 = np.int16(audio_np * 32767)
+
+            # Save as WAV file
+            with wave.open(temp_file, "wb") as wf:
+                wf.setnchannels(1)  # Mono
+                wf.setsampwidth(2)  # 16-bit
+                wf.setframerate(16000)  # 16kHz sample rate (VAD sample rate)
+                wf.writeframes(audio_int16.tobytes())
+            
+            print(f"Audio saved to {temp_file}")
+        except Exception as e:
+            print(f"Failed to save audio: {e}")
+
 # Global debug timer instance
 debug_timer = DebugTimer()
 
@@ -137,3 +192,7 @@ def timer(name):
             pass
     """
     return debug_timer.timer(name)
+
+def debug_save_audio(audio_data):
+    """Save audio data to a temporary file"""
+    debug_timer.save_audio(audio_data)

@@ -1,5 +1,4 @@
 import sounddevice as sd
-import time
 import torch
 import torchaudio
 from silero_vad import load_silero_vad
@@ -16,11 +15,10 @@ from scipy.signal import resample
 
 def load_whisper_model():
     """Loads the Faster Whisper model."""
-    # base tiny.en
     whisper_model = faster_whisper.WhisperModel(
-        'large-v2', 
+        'distil-small.en', 
         device = 'cuda', 
-        compute_type = 'int8_float16'
+        compute_type = 'float16'
     )
     return whisper_model
 
@@ -56,10 +54,17 @@ class S2S:
         self.speech_audio_buffer = torch.empty(0)
         self.silence_counter = 0
         self.silence_threshold_frames = 3 # x * 512 / 16000 = 96ms
+        self.pre_speech_buffer = torch.empty(0)
+        self.pre_speech_frames = 5  # Number of frames to keep before speech detection
+        self.post_speech_silence_frames = 2  # Number of silence frames to add after speech ends
+        # Maximum audio buffer size in frames before forcing transcription. 1.5 seconds * 16000 Hz.
+        self.max_buffer_frames = int(1.5 * self.vad_samplerate)
+
 
         # --- stt settings ---
         self.text_model = load_whisper_model()
-        self.whisper_prompt = "The quick brown fox jumps over the lazy dog. She sells seashells by the seashore. Charles and Philip watched the game with zeal."
+        # The initial prompt helps the model recognize specific words or names.
+        self.whisper_prompt = "The quick brown fox jumps over the lazy dog. Some names I might say are Xylia, Kaelen, and Zephyr."
 
         # --- Piper settings ---
         print("Loading Piper TTS model...")
@@ -191,89 +196,128 @@ class S2S:
             except Exception as e:
                 print(f"Error writing to monitoring device: {e}")
 
+    def _process_speech_chunk(self, is_final_chunk=False):
+        """
+        Transcribes the speech audio buffer, synthesizes the text, and updates the buffer.
+        It intelligently handles chunking for long sentences to maintain low latency.
+        """
+        if self.speech_audio_buffer.shape[0] == 0:
+            return
+
+        audio_to_process = self.speech_audio_buffer.clone().cpu().numpy()
+
+        start_timer('complete')
+        text, last_word_end_time = self.whisper_transcribe(audio_to_process)
+
+        if text.strip():
+            start_timer('synthesis_total')
+            self._synthesize_and_buffer_text(text)
+            end_timer('synthesis_total')
+        
+        end_timer('complete')
+        print_timing_summary(text.strip())
+
+        if is_final_chunk:
+            self.speech_audio_buffer = torch.empty(0)
+        else:
+            # Convert the end time of the last word to a frame index
+            last_frame = int(last_word_end_time * self.vad_samplerate)
+            # Trim the buffer to keep only the audio that hasn't been transcribed
+            if last_frame < self.speech_audio_buffer.shape[0]:
+                 self.speech_audio_buffer = self.speech_audio_buffer[last_frame:]
+            else:
+                 # This can happen if whisper processes the whole chunk
+                 self.speech_audio_buffer = torch.empty(0)
 
     def _processing_loop(self):
         """Processing thread"""
         while self.is_running.is_set():
             try:
-                # This line retrieves the next chunk of audio data from the input queue, waiting up to one second for new data to arrive.
+                # Get audio data from input queue
                 indata = self.input_queue.get(timeout=1)
-                
-                # convers a 2D Numpy array to an torch tensor
+                # Convert to tensor and extract mono channel
                 audio_tensor = torch.from_numpy(indata[:, 0]).to(torch.float32)
-
-                # Resample for the VAD
+                # Resample audio to VAD model's expected sample rate
                 resampled_for_vad = self.resample_audio(audio_tensor, self.samplerate, self.vad_samplerate)
-                # Combine old and new data
+                # Add new audio to VAD buffer
                 self.vad_audio_buffer = torch.cat([self.vad_audio_buffer, resampled_for_vad])
-                # Checks if the audio is long enogh for the VAD
+
+                # Process VAD buffer in chunks
                 while self.vad_audio_buffer.shape[0] >= self.vad_buffer_chunk_size:
-                    # Cut out a Chuck of data
+                    # Extract chunk for VAD analysis
                     chunk = self.vad_audio_buffer[:self.vad_buffer_chunk_size]
                     self.vad_audio_buffer = self.vad_audio_buffer[self.vad_buffer_chunk_size:]
-                    
-                    # Runs the VAD
+                    # Get speech probability from VAD model
                     speech_prob = self.vad_model(chunk, self.vad_samplerate).item()
 
-                    # Check if Speaking
+                    # Maintain pre-speech buffer for context
+                    self.pre_speech_buffer = torch.cat([self.pre_speech_buffer, chunk])
+                    if self.pre_speech_buffer.shape[0] > self.pre_speech_frames * self.vad_buffer_chunk_size:
+                        frames_to_remove = self.pre_speech_buffer.shape[0] - (self.pre_speech_frames * self.vad_buffer_chunk_size)
+                        self.pre_speech_buffer = self.pre_speech_buffer[frames_to_remove:]
+
+                    # Handle speech detection
                     if speech_prob > self.vad_speech_prob_threshold:
                         self.silence_counter = 0
+                        # Start of speech detection
                         if not self.is_speaking:
                             self.is_speaking = True
-                        # Combine only the speech chunks
+                            # Add pre-speech context to speech buffer
+                            self.speech_audio_buffer = torch.cat([self.speech_audio_buffer, self.pre_speech_buffer])
+                        # Add current chunk to speech buffer
                         self.speech_audio_buffer = torch.cat([self.speech_audio_buffer, chunk])
+
+                        # If buffer is too long, process a chunk of it without waiting for silence
+                        if self.speech_audio_buffer.shape[0] > self.max_buffer_frames:
+                            self._process_speech_chunk(is_final_chunk=False)
+
+                    # Handle silence detection
                     else:
                         if self.is_speaking:
+                            # Add silence frames after speech for context
+                            if self.silence_counter < self.post_speech_silence_frames:
+                                self.speech_audio_buffer = torch.cat([self.speech_audio_buffer, chunk])
+                            
+                            # Count consecutive silence frames
                             self.silence_counter += 1
-                            # Waits for the Silence to be longer than the threshold
-                            if self.silence_counter > self.silence_threshold_frames:
+                            # End of speech detection
+                            if self.silence_counter > self.silence_threshold_frames + self.post_speech_silence_frames:
                                 self.is_speaking = False
-                                start_timer('complete')
-                                
-                                # reset the speach buffer and counter
-                                start_timer('buffer_prep')
-                                audio_to_process = self.speech_audio_buffer.clone().cpu().numpy()
-                                self.speech_audio_buffer = torch.empty(0)
+                                # Process the final chunk of speech
+                                self._process_speech_chunk(is_final_chunk=True)
                                 self.silence_counter = 0
-                                end_timer('buffer_prep')
-                                
-                                text = self.whisper_transcribe(audio_to_process)
-
-                                if text.strip():
-                                    start_timer('synthesis_total')
-                                    self._synthesize_and_buffer_text(text)
-                                    end_timer('synthesis_total')
-                                
-                                end_timer('complete')
-                                print_timing_summary(text.strip())
             except queue.Empty:
                 continue
             except Exception as e:
                 print(f"Error in processing loop: {e}")
 
     def whisper_transcribe(self, audio):
+        """Transcribes audio and returns the text and the end time of the last word."""
         start_timer('stt')
-
         segments, _ = self.text_model.transcribe(
             audio, 
-            language = "en", 
-            beam_size = 5,
-            word_timestamps = True,
-            vad_filter = False,
-            #initial_prompt = self.whisper_prompt
+            language="en", 
+            beam_size=1,
+            word_timestamps=True,
+            vad_filter=True,
+            vad_parameters=dict(min_silence_duration_ms=100, min_speech_duration_ms=100),
+            initial_prompt=self.whisper_prompt
         )
-        full_text = list(segments)
-        #full_text = []
+        end_timer('stt')
 
-        #for segment in segments:
-        #    segment_text = segment.text
-            
-        #    full_text.append(segment_text)
+        start_timer('stt_text')
+        full_text = []
+        last_word_end_time = 0
+        for segment in segments:
+            full_text.append(segment.text)
+            if segment.words:
+                last_word_end_time = segment.words[-1].end
+        end_timer('stt_text')
         
         result = "".join(full_text).strip()
         
-        end_timer('stt')
-        return result
+        return result, last_word_end_time
+
 
     def resample_audio(self, audio_tensor, original_rate, target_rate):
         if original_rate == target_rate:
