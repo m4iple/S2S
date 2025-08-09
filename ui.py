@@ -17,18 +17,16 @@ class StreamWindow(QMainWindow):
         # --- Window Icon ---
         self.setWindowIcon(QIcon("icon.ico"))
 
-        # --- System Tray Icon ---
-        self.tray_icon = QSystemTrayIcon(QIcon("icon.ico"), self)
-        self.tray_icon.setToolTip("S2S Audio Stream")
-        self.tray_icon.show()
-
+        # Create subtitle window but don't show it yet
         self.subtitle_window = SubtitleWindow()
-        self.subtitle_window.show()
         
         # Initialize S2S with the subtitle window
         self.s2s = S2S(subtitle_window=self.subtitle_window)
 
         self.init_ui()
+        
+        # Show subtitle window after main UI is fully initialized
+        self.subtitle_window.show()
 
         # --- Global Hotkey Setup ---
         try:
