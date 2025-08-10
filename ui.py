@@ -11,8 +11,8 @@ class StreamWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle('S2S Audio Stream')
-        self.resize(400, 400)
-        self.setMinimumSize(400, 400)
+        self.resize(500, 500)
+        self.setMinimumSize(500, 500)
 
         # --- Window Icon ---
         self.setWindowIcon(QIcon("icon.png"))
@@ -65,25 +65,103 @@ class StreamWindow(QMainWindow):
         model_layout.addWidget(self.model_combo)
 
         # Voice Modification Configs
-        voice_layout = QHBoxLayout()
         # Soft voice
+        voice_soft_layout = QHBoxLayout()
         self.voice_soft_btn = QPushButton('Soft Voice: True')
         self.voice_soft_btn.setCheckable(True)
         self.voice_soft_btn.setChecked(True)
         self.voice_soft_btn.setMinimumHeight(35)
         self.voice_soft_btn.clicked.connect(self.toggle_voice_soft)
-        voice_layout.addWidget(self.voice_soft_btn)
+        voice_soft_layout.addWidget(self.voice_soft_btn)
+        # Soft Cutoff
+        self.voice_soft_cutoff_spin = QDoubleSpinBox()
+        self.voice_soft_cutoff_spin.setMinimum(5000)
+        self.voice_soft_cutoff_spin.setMaximum(10000)
+        self.voice_soft_cutoff_spin.setSingleStep(100)
+        self.voice_soft_cutoff_spin.setValue(6000)
+        self.voice_soft_cutoff_spin.setDecimals(0)
+        self.voice_soft_cutoff_spin.setSuffix(" Hz")
+        self.voice_soft_cutoff_spin.setMinimumHeight(35)
+        self.voice_soft_cutoff_spin.valueChanged.connect(self.change_voice_soft_cutoff)
+        voice_soft_layout.addWidget(self.voice_soft_cutoff_spin)
+        # Soft Order
+        self.voice_soft_order_spin = QDoubleSpinBox()
+        self.voice_soft_order_spin.setMinimum(1)
+        self.voice_soft_order_spin.setMaximum(10)
+        self.voice_soft_order_spin.setSingleStep(1)
+        self.voice_soft_order_spin.setValue(2)
+        self.voice_soft_order_spin.setDecimals(0)
+        self.voice_soft_order_spin.setMinimumHeight(35)
+        self.voice_soft_order_spin.valueChanged.connect(self.change_voice_soft_order)
+        voice_soft_layout.addWidget(self.voice_soft_order_spin)
+
+        # Auto Tune
+        voice_tune_layout = QHBoxLayout()
+        # Voice Tune Button
+        self.voice_tune_btn = QPushButton('Voice Tune: False')
+        self.voice_tune_btn.setCheckable(True)
+        self.voice_tune_btn.setChecked(False)
+        self.voice_tune_btn.setMinimumHeight(35)
+        self.voice_tune_btn.clicked.connect(self.toggle_voice_tune)
+        voice_tune_layout.addWidget(self.voice_tune_btn)
+        # Voice Tune Delay
+        self.voice_tune_delay_spin = QDoubleSpinBox()
+        self.voice_tune_delay_spin.setMinimum(0)
+        self.voice_tune_delay_spin.setMaximum(50)
+        self.voice_tune_delay_spin.setSingleStep(1)
+        self.voice_tune_delay_spin.setValue(10)
+        self.voice_tune_delay_spin.setDecimals(0)
+        self.voice_tune_delay_spin.setSuffix(" ms (delay)")
+        self.voice_tune_delay_spin.setMinimumHeight(35)
+        self.voice_tune_delay_spin.valueChanged.connect(self.change_voice_tune_delay)
+        voice_tune_layout.addWidget(self.voice_tune_delay_spin)
+        # Voice Tune depth
+        self.voice_tune_depth_spin = QDoubleSpinBox()
+        self.voice_tune_depth_spin.setMinimum(0)
+        self.voice_tune_depth_spin.setMaximum(1)
+        self.voice_tune_depth_spin.setSingleStep(0.01)
+        self.voice_tune_depth_spin.setValue(0.15)
+        self.voice_tune_depth_spin.setDecimals(2)
+        self.voice_tune_depth_spin.setSuffix(" +- (depth)")
+        self.voice_tune_depth_spin.setMinimumHeight(35)
+        self.voice_tune_depth_spin.valueChanged.connect(self.change_voice_tune_depth)
+        voice_tune_layout.addWidget(self.voice_tune_depth_spin)
+        # Voice Tune mix
+        self.voice_tune_mix_spin = QDoubleSpinBox()
+        self.voice_tune_mix_spin.setMinimum(0)
+        self.voice_tune_mix_spin.setMaximum(1)
+        self.voice_tune_mix_spin.setSingleStep(0.01)
+        self.voice_tune_mix_spin.setValue(0.40)
+        self.voice_tune_mix_spin.setDecimals(2)
+        self.voice_tune_mix_spin.setSuffix(" % (mix)")
+        self.voice_tune_mix_spin.setMinimumHeight(35)
+        self.voice_tune_mix_spin.valueChanged.connect(self.change_voice_tune_mix)
+        voice_tune_layout.addWidget(self.voice_tune_mix_spin)
+
+        # Pitch and Seed
+        voice_basic_layout = QHBoxLayout()
         # TTS speed
         self.voice_speed_spin = QDoubleSpinBox()
-        self.voice_speed_spin.setMinimum(0.5)
+        self.voice_speed_spin.setMinimum(0.0)
         self.voice_speed_spin.setMaximum(2.0)
         self.voice_speed_spin.setSingleStep(0.01)
         self.voice_speed_spin.setValue(1.0)
         self.voice_speed_spin.setDecimals(2)
-        self.voice_speed_spin.setSuffix("x")
+        self.voice_speed_spin.setSuffix("x (speed)")
         self.voice_speed_spin.setMinimumHeight(35)
         self.voice_speed_spin.valueChanged.connect(self.change_voice_speed)
-        voice_layout.addWidget(self.voice_speed_spin)
+        voice_basic_layout.addWidget(self.voice_speed_spin)
+        # TTS Pitch
+        self.voice_pitch_spin = QDoubleSpinBox()
+        self.voice_pitch_spin.setMinimum(-20.0)
+        self.voice_pitch_spin.setMaximum(20.0)
+        self.voice_pitch_spin.setSingleStep(0.1)
+        self.voice_pitch_spin.setValue(0.0)
+        self.voice_pitch_spin.setDecimals(1)
+        self.voice_pitch_spin.setSuffix(" st (pitch)")
+        self.voice_pitch_spin.setMinimumHeight(35)
+        self.voice_pitch_spin.valueChanged.connect(self.change_voice_pitch)
+        voice_basic_layout.addWidget(self.voice_pitch_spin)
 
         # Font selection
         font_layout = QHBoxLayout()
@@ -113,7 +191,9 @@ class StreamWindow(QMainWindow):
         layout.setSpacing(15)
         layout.setContentsMargins(20, 20, 20, 20)
         layout.addLayout(model_layout)
-        layout.addLayout(voice_layout)
+        layout.addLayout(voice_soft_layout)
+        layout.addLayout(voice_tune_layout)
+        layout.addLayout(voice_basic_layout)
         layout.addLayout(font_layout)
         layout.addLayout(text_layout)
         layout.addWidget(stream_layout)
@@ -162,6 +242,15 @@ class StreamWindow(QMainWindow):
             self.s2s.chage_voice_soft(is_checked)
         except Exception as e:
             print(f"Error changing soft voice:: {e}")
+
+    def toggle_voice_tune(self):
+        """Toggle the soft voice"""
+        is_checked = self.voice_tune_btn.isChecked()
+        self.voice_tune_btn.setText(f'Voice Tune: {str(is_checked)}')
+        try:
+            self.s2s.chage_voice_tune(is_checked)
+        except Exception as e:
+            print(f"Error changing soft voice:: {e}")
     
     def change_voice_speed(self):
         value = self.voice_speed_spin.value()
@@ -169,6 +258,48 @@ class StreamWindow(QMainWindow):
             self.s2s.change_voice_speed(value)
         except Exception as e:
             print(f"Error changing voice speed:: {e}")
+    
+    def change_voice_pitch(self):
+        value = self.voice_pitch_spin.value()
+        try:
+            self.s2s.change_voice_pitch(value)
+        except Exception as e:
+            print(f"Error changing voice pitch:: {e}")
+
+    def change_voice_soft_cutoff(self):
+        value = self.voice_soft_cutoff_spin.value()
+        try:
+            self.s2s.change_voice_soft_cuttoff(value)
+        except Exception as e:
+            print(f"Error changing soft voice cutoff:: {e}")
+
+    def change_voice_soft_order(self):
+        value = self.voice_soft_order_spin.value()
+        try:
+            self.s2s.change_voice_soft_order(value)
+        except Exception as e:
+            print(f"Error changing soft voice order:: {e}")
+
+    def change_voice_tune_delay(self):
+        value = self.voice_tune_delay_spin.value()
+        try:
+            self.s2s.chage_voice_tune_delay(value)
+        except Exception as e:
+            print(f"Error changing voice tune delay:: {e}")
+
+    def change_voice_tune_depth(self):
+        value = self.voice_tune_depth_spin.value()
+        try:
+            self.s2s.chage_voice_tune_depth(value)
+        except Exception as e:
+            print(f"Error changing voice tune depth:: {e}")
+
+    def change_voice_tune_mix(self):
+        value = self.voice_tune_mix_spin.value()
+        try:
+            self.s2s.chage_voice_tune_mix(value)
+        except Exception as e:
+            print(f"Error changing voice tune mix:: {e}")
 
     def populate_models(self):
         """Populate the model dropdown with available models"""

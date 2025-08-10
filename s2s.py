@@ -8,10 +8,11 @@ import numpy as np
 import threading
 import queue
 import os
+import pyrubberband as rb
 from model_functions import get_model_path
 from debug import start_timer, end_timer, print_timing_summary
 
-from scipy.signal import resample
+from scipy.signal import resample, butter, lfilter
 
 def load_whisper_model():
     """Loads the Faster Whisper model."""
@@ -84,8 +85,14 @@ class S2S:
 
         # --- Voice modification settings --
         self.voice_soft = True
+        self.voice_cutoff = 6000
+        self.voice_order = 2
         self.voice_speed = 1.0
+        self.voice_pitch = 0.0
         self.voice_tune = False
+        self.voice_tune_delay = 10 # Delay for the copied voices in milliseconds
+        self.voice_tune_depth = 0.15 # Pitch shift for the copies in semitones (+/-)
+        self.voice_tune_mix = 0.40 # How much of the chorus voices to mix in (0.0 to 1.0)
 
         # --- Subtitle UI ---
         self.subtitle_window = subtitle_window
@@ -94,14 +101,37 @@ class S2S:
         """Toggle the Soft Voice"""
         self.voice_soft = data
 
+    def change_voice_soft_cuttoff(self, data):
+        """Change the Soft Voice Cutoff"""
+        self.voice_cutoff = data
+        
+    def change_voice_soft_order(self, data):
+        """Change the Soft Voice Order """
+        self.voice_order = data
+
     def change_voice_speed(self, data):
         """Change the Speed of the TTS Voice"""
         self.voice_speed = data
+    
+    def change_voice_pitch(self, data):
+        """Change the pitch of the TTS Voice"""
+        self.voice_pitch = data
 
-    def set_debug_mode(self, enabled):
-        """Enable or disable debug timing"""
-        from debug import set_debug
-        set_debug(enabled)
+    def chage_voice_tune(self, data):
+        """Toggle the Voice Tune"""
+        self.voice_tune = data
+
+    def chage_voice_tune_delay(self, data):
+        """Toggle the Voice Tune"""
+        self.voice_tune_delay = data
+
+    def chage_voice_tune_depth(self, data):
+        """Toggle the Voice Tune"""
+        self.voice_tune_depth = data
+
+    def chage_voice_tune_mix(self, data):
+        """Toggle the Voice Tune"""
+        self.voice_tune_mix = data
 
     def start_stream(self):
         """Start the audio Stream"""
@@ -372,14 +402,56 @@ class S2S:
     def audio_modifications(self, audio):
         """modifies audio data"""
         start_timer('audio_mod')
+        modified_audio = audio
+
+        if self.voice_pitch != 0.0:
+            modified_audio = rb.pitch_shift(modified_audio, self.samplerate, self.voice_pitch)
+
+        if self.voice_speed != 1.0:
+            modified_audio = rb.time_stretch(modified_audio, self.samplerate, self.voice_speed)
+            #new_length = int(len(modified_audio) / self.voice_speed)
+            #modified_audio = resample(modified_audio, new_length)
+
         if self.voice_soft:
-            pass
+            modified_audio = self.voice_softer(modified_audio)
         
         if self.voice_tune:
-            pass
-
-        new_length = int(len(audio) / self.voice_speed)
-        audio = resample(audio, new_length)
+            modified_audio = self.voice_tune_func(modified_audio)
             
         end_timer('audio_mod')
-        return audio
+        return modified_audio
+    
+    def voice_softer(self, audio):
+        # Nyquist frequency is the highest possible frequency that can be accurately captured and reproduced at a given sample rate.
+        nyquist = 0.5 * self.samplerate
+        normal_cutoff = self.voice_cutoff / nyquist
+        b, a = butter(self.voice_order, normal_cutoff, btype='low', analog=False)
+
+        # Apply the filter
+        softened_audio = lfilter(b, a, audio)
+
+        return softened_audio.astype(np.float32)
+    
+    def voice_tune_func(self, audio):
+        delay_samples = int(self.voice_tune_delay * self.samplerate / 1000)
+    
+        # Pad the original audio so we can create a delayed version
+        padded_audio = np.pad(audio, (delay_samples, 0), 'constant')
+        
+        # Create two copies, slightly pitch-shifted up and down
+        chorus1 = rb.pitch_shift(padded_audio, self.samplerate, self.voice_tune_depth)
+        chorus2 = rb.pitch_shift(padded_audio, self.samplerate, -self.voice_tune_depth)
+        
+        # Trim the delayed copies to match the original audio's length
+        chorus1 = chorus1[:len(audio)]
+        chorus2 = chorus2[:len(audio)]
+        
+        # Mix the original audio with the two chorus copies
+        output_audio = (1 - self.voice_tune_mix) * audio + self.voice_tune_mix * (chorus1 + chorus2) / 2
+        
+        # Normalize the final audio to prevent clipping (volume getting too loud)
+        max_val = np.max(np.abs(output_audio))
+        if max_val > 1.0:
+            output_audio /= max_val
+            
+        return output_audio.astype(np.float32)

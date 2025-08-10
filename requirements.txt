@@ -9,6 +9,6 @@ silero-vad
 faster-whisper
 PyQt6
 scipy
-
-
+pyrubberband
+scipy
 
