@@ -126,7 +126,7 @@ class StreamWindow(QMainWindow):
         """Populate the font dropdown with fonts from .fonts folder only"""
 
         self.font_combo.clear()
-        current_font_name = self.subtitle_window.label.font().family()
+        current_font_name = self.subtitle_window.current_font.family()
 
         fonts_folder = os.path.join(os.path.dirname(__file__), '.fonts')
         if os.path.isdir(fonts_folder):
@@ -151,9 +151,8 @@ class StreamWindow(QMainWindow):
         """Change the font of the subtitle window"""
         font_name = self.font_combo.currentText()
         if font_name:
-            font = QFont(font_name)
-            font.setPointSize(24)  # Keep the same font size
-            self.subtitle_window.label.setFont(font)
+            self.subtitle_window.change_font(font_name)
+
 
     def toggle_voice_soft(self):
         """Toggle the soft voice"""
