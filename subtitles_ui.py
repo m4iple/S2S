@@ -15,7 +15,7 @@ class SubtitleWindow(QMainWindow):
         self.setWindowTitle('Subtitles')
         self.resize(1920, 330)
         self.setMinimumSize(1920, 330)
-        self.setWindowIcon(QIcon("icon.ico"))
+        self.setWindowIcon(QIcon("icon.png"))
         #self.setStyleSheet("background-color: green;")
         #self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
@@ -35,7 +35,7 @@ class SubtitleWindow(QMainWindow):
 
 
         # --- System Tray Icon (Restored) ---
-        self.tray_icon = QSystemTrayIcon(QIcon("icon.ico"), self)
+        self.tray_icon = QSystemTrayIcon(QIcon("icon.png"), self)
         self.tray_icon.setToolTip("S2S Audio Stream")
         self.tray_icon.show()
 

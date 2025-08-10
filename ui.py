@@ -15,7 +15,7 @@ class StreamWindow(QMainWindow):
         self.setMinimumSize(400, 400)
 
         # --- Window Icon ---
-        self.setWindowIcon(QIcon("icon.ico"))
+        self.setWindowIcon(QIcon("icon.png"))
 
         # Create subtitle window but don't show it yet
         self.subtitle_window = SubtitleWindow()
