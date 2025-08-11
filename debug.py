@@ -8,6 +8,7 @@ import os
 import torch
 import numpy as np
 import wave
+import sqlite3
 
 # Global debug flag
 DEBUG = True
@@ -20,7 +21,16 @@ class DebugTimer:
         self.history = defaultdict(list)  # Historical timing data
         self.active_timers = {}  # Currently running timers
         self.temp_path = "./.temp"
-    
+        self.db_connection = sqlite3.connect("database.db")
+        cur = self.db_connection.cursor()
+        cur.execute("CREATE TABLE IF NOT EXIST s2s_transcribt (id VARCHAR(50) PRIMARY KEY, transcribt TEXT, audio_lenght INT, timings TEXT, timestamp DATETIME)")
+
+
+    def save_database_data(self, data):
+        cur = self.db_connection.cursor()
+        cur.executemany("INSERT INTO s2s_transcribt VALUES (?, ?, ?, ?, ?)")
+        self.db_connection.commit()
+
     def start_timer(self, name):
         """Start a named timer"""
         if not DEBUG:
