@@ -21,15 +21,99 @@ class DebugTimer:
         self.history = defaultdict(list)  # Historical timing data
         self.active_timers = {}  # Currently running timers
         self.temp_path = "./.temp"
-        self.db_connection = sqlite3.connect("database.db")
-        cur = self.db_connection.cursor()
-        cur.execute("CREATE TABLE IF NOT EXIST s2s_transcribt (id VARCHAR(50) PRIMARY KEY, transcribt TEXT, audio_lenght INT, timings TEXT, timestamp DATETIME)")
+        self.db_connection = None
+        self.db_path = "C:/Users/Aspen/Documents/Programing/database/database.db"
+        self._init_database()
+        
 
+    def _init_database(self):
+        """Initialize database connection and create table if it doesn't exist"""
+        try:
+            self.db_connection = sqlite3.connect(self.db_path, check_same_thread=False)
+            cur = self.db_connection.cursor()
+            cur.execute("""CREATE TABLE IF NOT EXISTS s2s_transcript (
+                id VARCHAR(50) PRIMARY KEY, 
+                transcript TEXT, 
+                audio_length INT, 
+                timings TEXT, 
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )""")
+            self.db_connection.commit()
+        except sqlite3.Error as e:
+            print(f"Database initialization error: {e}")
+            self.db_connection = None
 
-    def save_database_data(self, data):
-        cur = self.db_connection.cursor()
-        cur.executemany("INSERT INTO s2s_transcribt VALUES (?, ?, ?, ?, ?)")
-        self.db_connection.commit()
+    def save_database_data(self, record_id, transcript, audio_length, timings, timestamp=None):
+        """Save transcription data to database
+        
+        Args:
+            record_id: Unique identifier for the record
+            transcript: The transcribed text
+            audio_length: Length of audio in milliseconds
+            timings: JSON string of timing data
+            timestamp: Optional timestamp (defaults to current time)
+        """
+        if not self.db_connection:
+            print("Database not initialized, cannot save data")
+            return False
+            
+        try:
+            cur = self.db_connection.cursor()
+            if timestamp:
+                cur.execute("INSERT INTO s2s_transcript VALUES (?, ?, ?, ?, ?)", 
+                           (record_id, transcript, audio_length, timings, timestamp))
+            else:
+                cur.execute("INSERT INTO s2s_transcript (id, transcript, audio_length, timings) VALUES (?, ?, ?, ?)", 
+                           (record_id, transcript, audio_length, timings))
+            self.db_connection.commit()
+            return True
+        except sqlite3.Error as e:
+            print(f"Database save error: {e}")
+            return False
+
+    def close_database(self):
+        """Close database connection"""
+        if self.db_connection:
+            self.db_connection.close()
+            self.db_connection = None
+
+    def get_transcription_history(self, limit=10):
+        """Get recent transcription history from database
+        
+        Args:
+            limit: Maximum number of records to retrieve
+            
+        Returns:
+            List of tuples containing (id, transcript, audio_length, timings, timestamp)
+        """
+        if not self.db_connection:
+            print("Database not initialized")
+            return []
+            
+        try:
+            cur = self.db_connection.cursor()
+            cur.execute("SELECT * FROM s2s_transcript ORDER BY timestamp DESC LIMIT ?", (limit,))
+            return cur.fetchall()
+        except sqlite3.Error as e:
+            print(f"Database query error: {e}")
+            return []
+
+    def save_session_to_database(self, transcript="", audio_length=0):
+        """Save current timing session to database with auto-generated ID"""
+        if not self.current_session:
+            return False
+            
+        import json
+        import uuid
+        
+        record_id = str(uuid.uuid4())
+        timings_json = json.dumps(self.current_session)
+        
+        return self.save_database_data(record_id, transcript, audio_length, timings_json)
+
+    def __del__(self):
+        """Cleanup database connection when object is destroyed"""
+        self.close_database()
 
     def start_timer(self, name):
         """Start a named timer"""
@@ -56,8 +140,14 @@ class DebugTimer:
             return 0
         return sum(self.history[name]) / len(self.history[name])
     
-    def print_session_summary(self, transcribed_text=""):
-        """Print timing summary for the current session"""
+    def print_session_summary(self, transcribed_text="", save_to_db=False, audio_length=0):
+        """Print timing summary for the current session
+        
+        Args:
+            transcribed_text: The transcribed text to display and optionally save
+            save_to_db: Whether to save this session to the database
+            audio_length: Length of the audio in milliseconds (for database)
+        """
         if not DEBUG or not self.current_session:
             return
         
@@ -90,6 +180,13 @@ class DebugTimer:
             print(f"{'UNACCOUNTED':>12}: {unaccounted:6.2f} ms ({unaccounted/complete_time*100:.1f}%)")
         
         print("="*60)
+        
+        # Save to database if requested
+        if save_to_db:
+            if self.save_session_to_database(transcribed_text, audio_length):
+                print("Session saved to database")
+            else:
+                print("Failed to save session to database")
         
         # Clear current session for next cycle
         self.current_session.clear()
@@ -175,13 +272,29 @@ def end_timer(name):
     """End a named timer"""
     debug_timer.end_timer(name)
 
-def print_timing_summary(transcribed_text=""):
-    """Print timing summary for current session"""
-    debug_timer.print_session_summary(transcribed_text)
+def print_timing_summary(transcribed_text="", save_to_db=False, audio=None):
+    """Print timing summary for current session
+    
+    Args:
+        transcribed_text: The transcribed text to display
+        save_to_db: Whether to save this session to the database
+        audio_length: Length of the audio in milliseconds
+    """
+    audio_length = calculate_audio_length(audio) if audio is not None else 0
+
+    debug_timer.print_session_summary(transcribed_text, save_to_db, audio_length)
 
 def clear_timing_history():
     """Clear all timing history"""
     debug_timer.clear_history()
+
+def save_session_to_database(transcript="", audio_length=0):
+    """Save current timing session to database"""
+    return debug_timer.save_session_to_database(transcript, audio_length)
+
+def close_debug_database():
+    """Close the debug database connection"""
+    debug_timer.close_database()
 
 def set_debug(enabled):
     """Enable or disable debug mode"""
@@ -206,3 +319,18 @@ def timer(name):
 def debug_save_audio(audio_data):
     """Save audio data to a temporary file"""
     debug_timer.save_audio(audio_data)
+
+def calculate_audio_length(audio):
+    """Calculates the length of the given audio in milliseconds (assumes 16kHz sample rate)"""
+    if audio is None:
+        return 0
+    # Handle torch tensor or numpy array
+    if isinstance(audio, torch.Tensor):
+        num_samples = audio.numel()
+    elif isinstance(audio, np.ndarray):
+        num_samples = audio.size
+    else:
+        return 0
+    
+    duration_ms = (num_samples / 48000) * 1000 # use stream sample rate
+    return int(duration_ms)

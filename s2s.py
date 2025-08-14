@@ -245,7 +245,7 @@ class S2S:
             end_timer('synthesis_total')
         
         end_timer('complete')
-        print_timing_summary(text.strip())
+        print_timing_summary(text.strip(), True, self.tts_output_buffer)
 
         if is_final_chunk:
             self.speech_audio_buffer = torch.empty(0)
