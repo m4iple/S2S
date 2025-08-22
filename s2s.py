@@ -60,6 +60,7 @@ class S2S:
         self.post_speech_silence_frames = 2  # Number of silence frames to add after speech ends
         # Maximum audio buffer size in frames before forcing transcription. 1.5 seconds * 16000 Hz.
         self.max_buffer_frames = int(1.5 * self.vad_samplerate)
+        self.process_now = False
 
 
         # --- stt settings ---
@@ -299,7 +300,7 @@ class S2S:
 
                         # If buffer is too long, process a chunk of it without waiting for silence
                         if self.speech_audio_buffer.shape[0] > self.max_buffer_frames:
-                            self._process_speech_chunk(is_final_chunk=False)
+                            self.process_now = True
 
                     # Handle silence detection
                     else:
@@ -311,8 +312,9 @@ class S2S:
                             # Count consecutive silence frames
                             self.silence_counter += 1
                             # End of speech detection
-                            if self.silence_counter > self.silence_threshold_frames + self.post_speech_silence_frames:
+                            if self.silence_counter > self.silence_threshold_frames + self.post_speech_silence_frames or self.process_now:
                                 self.is_speaking = False
+                                self.process_now = False
                                 # Process the final chunk of speech
                                 self._process_speech_chunk(is_final_chunk=True)
                                 self.silence_counter = 0
@@ -409,8 +411,6 @@ class S2S:
 
         if self.voice_speed != 1.0:
             modified_audio = rb.time_stretch(modified_audio, self.samplerate, self.voice_speed)
-            #new_length = int(len(modified_audio) / self.voice_speed)
-            #modified_audio = resample(modified_audio, new_length)
 
         if self.voice_soft:
             modified_audio = self.voice_softer(modified_audio)
@@ -433,25 +433,4 @@ class S2S:
         return softened_audio.astype(np.float32)
     
     def voice_tune_func(self, audio):
-        delay_samples = int(self.voice_tune_delay * self.samplerate / 1000)
-    
-        # Pad the original audio so we can create a delayed version
-        padded_audio = np.pad(audio, (delay_samples, 0), 'constant')
-        
-        # Create two copies, slightly pitch-shifted up and down
-        chorus1 = rb.pitch_shift(padded_audio, self.samplerate, self.voice_tune_depth)
-        chorus2 = rb.pitch_shift(padded_audio, self.samplerate, -self.voice_tune_depth)
-        
-        # Trim the delayed copies to match the original audio's length
-        chorus1 = chorus1[:len(audio)]
-        chorus2 = chorus2[:len(audio)]
-        
-        # Mix the original audio with the two chorus copies
-        output_audio = (1 - self.voice_tune_mix) * audio + self.voice_tune_mix * (chorus1 + chorus2) / 2
-        
-        # Normalize the final audio to prevent clipping (volume getting too loud)
-        max_val = np.max(np.abs(output_audio))
-        if max_val > 1.0:
-            output_audio /= max_val
-            
-        return output_audio.astype(np.float32)
+        pass
