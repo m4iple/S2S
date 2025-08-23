@@ -1,5 +1,5 @@
 
-pytorch
+torch
 torchvision
 torchaudio
 onnxruntime-gpu
@@ -10,5 +10,6 @@ faster-whisper
 PyQt6
 scipy
 pyrubberband
-scipy
+numpy
+keyboard
 

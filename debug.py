@@ -12,6 +12,7 @@ import sqlite3
 
 # Global debug flag
 DEBUG = True
+DATABASE = False
 
 class DebugTimer:
     """Performance timing collector with statistics"""
@@ -28,9 +29,16 @@ class DebugTimer:
 
     def _init_database(self):
         """Initialize database connection and create table if it doesn't exist"""
+        # Respect the global DATABASE toggle
+        if not DATABASE:
+            # Ensure no open connection when DB is disabled
+            self.db_connection = None
+            return
+
         try:
             self.db_connection = sqlite3.connect(self.db_path, check_same_thread=False)
             cur = self.db_connection.cursor()
+            # Make shure the table exists
             cur.execute("""CREATE TABLE IF NOT EXISTS s2s_transcript (
                 id VARCHAR(50) PRIMARY KEY, 
                 transcript TEXT, 
@@ -53,6 +61,11 @@ class DebugTimer:
             timings: JSON string of timing data
             timestamp: Optional timestamp (defaults to current time)
         """
+        # Respect global toggle first
+        if not DATABASE:
+            print("Database disabled (DATABASE=False), not saving data")
+            return False
+
         if not self.db_connection:
             print("Database not initialized, cannot save data")
             return False
@@ -86,6 +99,10 @@ class DebugTimer:
         Returns:
             List of tuples containing (id, transcript, audio_length, timings, timestamp)
         """
+        if not DATABASE:
+            print("Database disabled (DATABASE=False), no history available")
+            return []
+
         if not self.db_connection:
             print("Database not initialized")
             return []
@@ -100,6 +117,11 @@ class DebugTimer:
 
     def save_session_to_database(self, transcript="", audio_length=0):
         """Save current timing session to database with auto-generated ID"""
+        # Respect global toggle
+        if not DATABASE:
+            print("Database disabled (DATABASE=False), not saving session")
+            return False
+
         if not self.current_session:
             return False
             
@@ -184,7 +206,7 @@ class DebugTimer:
         # Save to database if requested
         if save_to_db:
             if self.save_session_to_database(transcribed_text, audio_length):
-                print("Session saved to database")
+                print("Item saved to database")
             else:
                 print("Failed to save session to database")
         
@@ -304,6 +326,34 @@ def set_debug(enabled):
 def is_debug_enabled():
     """Check if debug mode is enabled"""
     return DEBUG
+
+
+def set_database(enabled: bool):
+    """Enable or disable database usage globally.
+
+    When enabling, attempt to initialize the DB connection. When disabling,
+    any open connection will be closed.
+    """
+    global DATABASE
+    DATABASE = bool(enabled)
+
+    # Apply change to the running debug_timer instance
+    try:
+        if DATABASE:
+            # Initialize DB if not already connected
+            if debug_timer.db_connection is None:
+                debug_timer._init_database()
+        else:
+            # Close any open connection when disabling
+            debug_timer.close_database()
+    except Exception:
+        # Keep toggle best-effort and avoid throwing from this helper
+        pass
+
+
+def is_database_enabled():
+    """Return whether the global database toggle is enabled."""
+    return DATABASE
 
 # Context manager for timing
 def timer(name):
