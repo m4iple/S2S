@@ -34,6 +34,8 @@ pip install -r requirements.txt
 
 - Download [Voice models](https://huggingface.co/rhasspy/piper-voices/tree/main) make shure the voices.json is in the root of the .models/tts folder
 
+- Download Fonts and put the .ttne into the .fonts folder
+
 # Runing the script
 
 in the root of the Project

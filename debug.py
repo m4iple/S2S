@@ -12,7 +12,7 @@ import sqlite3
 
 # Global debug flag
 DEBUG = True
-DATABASE = False
+DATABASE = True
 
 class DebugTimer:
     """Performance timing collector with statistics"""

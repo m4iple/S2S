@@ -81,7 +81,7 @@ class S2S:
         self.processing_thread = None
         
         # --- Monitoring device ---
-        self.monitoring_device_index = 22
+        self.monitoring_device_index = 22 # <- hardcoded device change! to see all devices (python -m sounddevice)
         self.monitoring_stream = None
 
         # --- Voice modification settings --
