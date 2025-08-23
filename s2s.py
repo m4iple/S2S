@@ -9,6 +9,7 @@ import threading
 import queue
 import os
 import pyrubberband as rb
+import onnxruntime
 from model_functions import get_model_path
 from debug import start_timer, end_timer, print_timing_summary
 
@@ -26,9 +27,13 @@ def load_whisper_model():
 class S2S:
     def __init__(self, subtitle_window=None):
         # ---  Onix Settings ---
-        os.environ['ORT_ENABLE_CUDA_GRAPH'] = '1'  # Enable CUDA graph optimization
-        os.environ['ORT_DISABLE_ALL_OPTIMIZATION'] = '0'  # Ensure optimizations are enabled
-        os.environ['ORT_TENSORRT_ENGINE_CACHE_ENABLE'] = '1'  # Enable TensorRT cache if available
+        sess_options = onnxruntime.SessionOptions()
+
+        # Set optimization level
+        # ORT_ENABLE_BASIC, ORT_ENABLE_EXTENDED, ORT_ENABLE_ALL
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+        sess_options.log_severity_level = 3
+
         
         # -- Global ---
         self.is_running = threading.Event()
