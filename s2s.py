@@ -15,7 +15,7 @@ from debug import start_timer, end_timer, print_timing_summary
 from scipy.signal import resample, butter, lfilter
 
 def load_whisper_model():
-    """Loads the Faster Whisper model."""
+    """Loads the Faster Whisper model. For cpu set device to 'cpu' and set compute_type to 'int8'."""
     whisper_model = faster_whisper.WhisperModel(
         'distil-small.en', 
         device = 'cuda', 
@@ -90,11 +90,7 @@ class S2S:
         self.voice_order = 2
         self.voice_speed = 1.0
         self.voice_pitch = 0.0
-        self.voice_tune = False
-        self.voice_tune_delay = 10 # Delay for the copied voices in milliseconds
-        self.voice_tune_depth = 0.15 # Pitch shift for the copies in semitones (+/-)
-        self.voice_tune_mix = 0.40 # How much of the chorus voices to mix in (0.0 to 1.0)
-
+        self.voice_rvc = False
         # --- Subtitle UI ---
         self.subtitle_window = subtitle_window
 
@@ -118,21 +114,9 @@ class S2S:
         """Change the pitch of the TTS Voice"""
         self.voice_pitch = data
 
-    def chage_voice_tune(self, data):
-        """Toggle the Voice Tune"""
-        self.voice_tune = data
-
-    def chage_voice_tune_delay(self, data):
-        """Toggle the Voice Tune"""
-        self.voice_tune_delay = data
-
-    def chage_voice_tune_depth(self, data):
-        """Toggle the Voice Tune"""
-        self.voice_tune_depth = data
-
-    def chage_voice_tune_mix(self, data):
-        """Toggle the Voice Tune"""
-        self.voice_tune_mix = data
+    def chage_voice_rvc(self, data):
+        """Toggle the RVC Tune"""
+        self.voice_rvc = data
 
     def start_stream(self):
         """Start the audio Stream"""
@@ -415,8 +399,8 @@ class S2S:
         if self.voice_soft:
             modified_audio = self.voice_softer(modified_audio)
         
-        if self.voice_tune:
-            modified_audio = self.voice_tune_func(modified_audio)
+        if self.voice_rvc:
+            modified_audio = self.voice_rvc_func(modified_audio)
             
         end_timer('audio_mod')
         return modified_audio
@@ -432,5 +416,5 @@ class S2S:
 
         return softened_audio.astype(np.float32)
     
-    def voice_tune_func(self, audio):
+    def voice_rvc_func(self, audio):
         pass

@@ -95,48 +95,15 @@ class StreamWindow(QMainWindow):
         self.voice_soft_order_spin.valueChanged.connect(self.change_voice_soft_order)
         voice_soft_layout.addWidget(self.voice_soft_order_spin)
 
-        # Auto Tune
-        voice_tune_layout = QHBoxLayout()
-        # Voice Tune Button
-        self.voice_tune_btn = QPushButton('Voice Tune: False')
-        self.voice_tune_btn.setCheckable(True)
-        self.voice_tune_btn.setChecked(False)
-        self.voice_tune_btn.setMinimumHeight(35)
-        self.voice_tune_btn.clicked.connect(self.toggle_voice_tune)
-        voice_tune_layout.addWidget(self.voice_tune_btn)
-        # Voice Tune Delay
-        self.voice_tune_delay_spin = QDoubleSpinBox()
-        self.voice_tune_delay_spin.setMinimum(0)
-        self.voice_tune_delay_spin.setMaximum(50)
-        self.voice_tune_delay_spin.setSingleStep(1)
-        self.voice_tune_delay_spin.setValue(10)
-        self.voice_tune_delay_spin.setDecimals(0)
-        self.voice_tune_delay_spin.setSuffix(" ms (delay)")
-        self.voice_tune_delay_spin.setMinimumHeight(35)
-        self.voice_tune_delay_spin.valueChanged.connect(self.change_voice_tune_delay)
-        voice_tune_layout.addWidget(self.voice_tune_delay_spin)
-        # Voice Tune depth
-        self.voice_tune_depth_spin = QDoubleSpinBox()
-        self.voice_tune_depth_spin.setMinimum(0)
-        self.voice_tune_depth_spin.setMaximum(1)
-        self.voice_tune_depth_spin.setSingleStep(0.01)
-        self.voice_tune_depth_spin.setValue(0.15)
-        self.voice_tune_depth_spin.setDecimals(2)
-        self.voice_tune_depth_spin.setSuffix(" +- (depth)")
-        self.voice_tune_depth_spin.setMinimumHeight(35)
-        self.voice_tune_depth_spin.valueChanged.connect(self.change_voice_tune_depth)
-        voice_tune_layout.addWidget(self.voice_tune_depth_spin)
-        # Voice Tune mix
-        self.voice_tune_mix_spin = QDoubleSpinBox()
-        self.voice_tune_mix_spin.setMinimum(0)
-        self.voice_tune_mix_spin.setMaximum(1)
-        self.voice_tune_mix_spin.setSingleStep(0.01)
-        self.voice_tune_mix_spin.setValue(0.40)
-        self.voice_tune_mix_spin.setDecimals(2)
-        self.voice_tune_mix_spin.setSuffix(" % (mix)")
-        self.voice_tune_mix_spin.setMinimumHeight(35)
-        self.voice_tune_mix_spin.valueChanged.connect(self.change_voice_tune_mix)
-        voice_tune_layout.addWidget(self.voice_tune_mix_spin)
+        # RVC
+        voice_rvc_layout = QHBoxLayout()
+        # Voice RVC Button
+        self.voice_rvc_btn = QPushButton('Voice Tune: False')
+        self.voice_rvc_btn.setCheckable(True)
+        self.voice_rvc_btn.setChecked(False)
+        self.voice_rvc_btn.setMinimumHeight(35)
+        self.voice_rvc_btn.clicked.connect(self.toggle_voice_rvc)
+        voice_rvc_layout.addWidget(self.voice_rvc_btn)
 
         # Pitch and Seed
         voice_basic_layout = QHBoxLayout()
@@ -192,7 +159,7 @@ class StreamWindow(QMainWindow):
         layout.setContentsMargins(20, 20, 20, 20)
         layout.addLayout(model_layout)
         layout.addLayout(voice_soft_layout)
-        layout.addLayout(voice_tune_layout)
+        layout.addLayout(voice_rvc_layout)
         layout.addLayout(voice_basic_layout)
         layout.addLayout(font_layout)
         layout.addLayout(text_layout)
@@ -243,14 +210,14 @@ class StreamWindow(QMainWindow):
         except Exception as e:
             print(f"Error changing soft voice:: {e}")
 
-    def toggle_voice_tune(self):
-        """Toggle the soft voice"""
-        is_checked = self.voice_tune_btn.isChecked()
-        self.voice_tune_btn.setText(f'Voice Tune: {str(is_checked)}')
+    def toggle_voice_rvc(self):
+        """Toggle the RVC voice"""
+        is_checked = self.voice_rvc_btn.isChecked()
+        self.voice_rvc_btn.setText(f'Voice RVC: {str(is_checked)}')
         try:
-            self.s2s.chage_voice_tune(is_checked)
+            self.s2s.chage_voice_rvc(is_checked)
         except Exception as e:
-            print(f"Error changing soft voice:: {e}")
+            print(f"Error changing RVC voice:: {e}")
     
     def change_voice_speed(self):
         value = self.voice_speed_spin.value()
@@ -279,27 +246,6 @@ class StreamWindow(QMainWindow):
             self.s2s.change_voice_soft_order(value)
         except Exception as e:
             print(f"Error changing soft voice order:: {e}")
-
-    def change_voice_tune_delay(self):
-        value = self.voice_tune_delay_spin.value()
-        try:
-            self.s2s.chage_voice_tune_delay(value)
-        except Exception as e:
-            print(f"Error changing voice tune delay:: {e}")
-
-    def change_voice_tune_depth(self):
-        value = self.voice_tune_depth_spin.value()
-        try:
-            self.s2s.chage_voice_tune_depth(value)
-        except Exception as e:
-            print(f"Error changing voice tune depth:: {e}")
-
-    def change_voice_tune_mix(self):
-        value = self.voice_tune_mix_spin.value()
-        try:
-            self.s2s.chage_voice_tune_mix(value)
-        except Exception as e:
-            print(f"Error changing voice tune mix:: {e}")
 
     def populate_models(self):
         """Populate the model dropdown with available models"""
