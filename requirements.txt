@@ -12,4 +12,4 @@ scipy
 pyrubberband
 numpy
 keyboard
-
+pedalboard

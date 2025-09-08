@@ -13,7 +13,8 @@ import onnxruntime
 from model_functions import get_model_path
 from debug import start_timer, end_timer, print_timing_summary
 
-from scipy.signal import resample, butter, lfilter
+from scipy.signal import resample, butter, lfilter, convolve
+from pedalboard import Reverb
 
 def load_whisper_model():
     """Loads the Faster Whisper model. For cpu set device to 'cpu' and set compute_type to 'int8'."""
@@ -95,9 +96,14 @@ class S2S:
         self.voice_order = 2
         self.voice_speed = 1.0
         self.voice_pitch = 0.0
-        self.voice_rvc = False
+        self.voice_rvc = False # not used
+        self.voice_rumble = False
+
         # --- Subtitle UI ---
         self.subtitle_window = subtitle_window
+
+        # --- Pay around ---
+        self.audio_copy = None
 
     def chage_voice_soft(self, data):
         """Toggle the Soft Voice"""
@@ -119,9 +125,13 @@ class S2S:
         """Change the pitch of the TTS Voice"""
         self.voice_pitch = data
 
-    def chage_voice_rvc(self, data):
+    def change_voice_rvc(self, data):
         """Toggle the RVC Tune"""
         self.voice_rvc = data
+
+    def change_voice_rumble(self, data):
+        """Toggle Low Rumble"""
+        self.voice_rumble = data
 
     def start_stream(self):
         """Start the audio Stream"""
@@ -225,6 +235,7 @@ class S2S:
             return
 
         audio_to_process = self.speech_audio_buffer.clone().cpu().numpy()
+        self.audio_copy = self.speech_audio_buffer.clone().cpu().numpy()
 
         start_timer('complete')
         text, last_word_end_time = self.whisper_transcribe(audio_to_process)
@@ -404,8 +415,8 @@ class S2S:
         if self.voice_soft:
             modified_audio = self.voice_softer(modified_audio)
         
-        if self.voice_rvc:
-            modified_audio = self.voice_rvc_func(modified_audio)
+        if self.voice_rumble:
+            modified_audio = self.voice_rumble_func(modified_audio)
             
         end_timer('audio_mod')
         return modified_audio
@@ -421,5 +432,25 @@ class S2S:
 
         return softened_audio.astype(np.float32)
     
-    def voice_rvc_func(self, audio):
-        pass
+    def voice_rumble_func(self, audio):
+        # 1. Define a cutoff frequency to isolate the low end for the rumble effect.
+        cutoff_freq = 250  # Frequencies below 250 Hz will get reverb.
+
+        # 2. Create and apply a low-pass filter to get only the low frequencies.
+        nyquist = 0.5 * self.samplerate
+        normal_cutoff = cutoff_freq / nyquist
+        # A slightly steeper filter (order=4) works well for isolating the rumble.
+        b, a = butter(4, normal_cutoff, btype='low', analog=False)
+        low_frequencies = lfilter(b, a, audio)
+
+        # Zero the value of some random samples in the low_frequencies array
+        num_zero = int(0.005 * len(low_frequencies))  # Affect 1% of the samples
+        if num_zero > 0:
+            half_indices = np.random.choice(len(low_frequencies), num_zero, replace=False)
+            low_frequencies[half_indices] = 0
+
+        mix_level = 0.5
+        output = audio + mix_level * low_frequencies
+        # 6. Prevent clipping after mixing the signals together.
+        output = np.clip(output, -1.0, 1.0)
+        return output.astype(np.float32)

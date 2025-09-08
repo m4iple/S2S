@@ -75,7 +75,7 @@ class StreamWindow(QMainWindow):
         voice_soft_layout.addWidget(self.voice_soft_btn)
         # Soft Cutoff
         self.voice_soft_cutoff_spin = QDoubleSpinBox()
-        self.voice_soft_cutoff_spin.setMinimum(5000)
+        self.voice_soft_cutoff_spin.setMinimum(0)
         self.voice_soft_cutoff_spin.setMaximum(10000)
         self.voice_soft_cutoff_spin.setSingleStep(100)
         self.voice_soft_cutoff_spin.setValue(6000)
@@ -95,15 +95,15 @@ class StreamWindow(QMainWindow):
         self.voice_soft_order_spin.valueChanged.connect(self.change_voice_soft_order)
         voice_soft_layout.addWidget(self.voice_soft_order_spin)
 
-        # RVC
-        voice_rvc_layout = QHBoxLayout()
-        # Voice RVC Button
-        self.voice_rvc_btn = QPushButton('Voice Tune: False')
-        self.voice_rvc_btn.setCheckable(True)
-        self.voice_rvc_btn.setChecked(False)
-        self.voice_rvc_btn.setMinimumHeight(35)
-        self.voice_rvc_btn.clicked.connect(self.toggle_voice_rvc)
-        voice_rvc_layout.addWidget(self.voice_rvc_btn)
+        # Rumble
+        voice_rumble_layout = QHBoxLayout()
+        # Voice Rumble Toggle Button
+        self.voice_rumble_btn = QPushButton('Voice Tune: False')
+        self.voice_rumble_btn.setCheckable(True)
+        self.voice_rumble_btn.setChecked(False)
+        self.voice_rumble_btn.setMinimumHeight(35)
+        self.voice_rumble_btn.clicked.connect(self.toggle_voice_rumble)
+        voice_rumble_layout.addWidget(self.voice_rumble_btn)
 
         # Pitch and Seed
         voice_basic_layout = QHBoxLayout()
@@ -159,7 +159,7 @@ class StreamWindow(QMainWindow):
         layout.setContentsMargins(20, 20, 20, 20)
         layout.addLayout(model_layout)
         layout.addLayout(voice_soft_layout)
-        layout.addLayout(voice_rvc_layout)
+        layout.addLayout(voice_rumble_layout)
         layout.addLayout(voice_basic_layout)
         layout.addLayout(font_layout)
         layout.addLayout(text_layout)
@@ -210,15 +210,15 @@ class StreamWindow(QMainWindow):
         except Exception as e:
             print(f"Error changing soft voice:: {e}")
 
-    def toggle_voice_rvc(self):
-        """Toggle the RVC voice"""
-        is_checked = self.voice_rvc_btn.isChecked()
-        self.voice_rvc_btn.setText(f'Voice RVC: {str(is_checked)}')
+    def toggle_voice_rumble(self):
+        """Toggle the rumble voice"""
+        is_checked = self.voice_rumble_btn.isChecked()
+        self.voice_rumble_btn.setText(f'Voice Tune: {str(is_checked)}')
         try:
-            self.s2s.chage_voice_rvc(is_checked)
+            self.s2s.change_voice_rumble(is_checked)
         except Exception as e:
-            print(f"Error changing RVC voice:: {e}")
-    
+            print(f"Error changing Tune voice:: {e}")
+
     def change_voice_speed(self):
         value = self.voice_speed_spin.value()
         try:
