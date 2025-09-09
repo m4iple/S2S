@@ -90,14 +90,20 @@ class S2S:
         self.monitoring_device_index = 22 # <- hardcoded device change! to see all devices (python -m sounddevice)
         self.monitoring_stream = None
 
-        # --- Voice modification settings --
+        # --- Voice soft settings ---
         self.voice_soft = True
         self.voice_cutoff = 6000
         self.voice_order = 2
+
+        # --- Voice rumble settings ---
+        self.voice_rumble = True
+        self.voice_rumble_cutoff = 250
+        self.voice_rumble_delay = 50
+        self.voice_rumble_mix = 1.0
+
+        # --- Voice Basic settings ---
         self.voice_speed = 1.0
         self.voice_pitch = 0.0
-        self.voice_rvc = False # not used
-        self.voice_rumble = False
 
         # --- Subtitle UI ---
         self.subtitle_window = subtitle_window
@@ -125,13 +131,21 @@ class S2S:
         """Change the pitch of the TTS Voice"""
         self.voice_pitch = data
 
-    def change_voice_rvc(self, data):
-        """Toggle the RVC Tune"""
-        self.voice_rvc = data
-
     def change_voice_rumble(self, data):
         """Toggle Low Rumble"""
         self.voice_rumble = data
+
+    def change_voice_rumble_cutoff(self, data):
+        """Change the rumble cutoff frequency"""
+        self.voice_rumble_cutoff = data
+
+    def change_voice_rumble_delay(self, data):
+        """Change the rumble delay in samples"""
+        self.voice_rumble_delay = data
+
+    def change_voice_rumble_mix(self, data):
+        """Change the rumble mix level"""
+        self.voice_rumble_mix = data
 
     def start_stream(self):
         """Start the audio Stream"""
@@ -434,7 +448,7 @@ class S2S:
     
     def voice_rumble_func(self, audio):
         # 1. Define a cutoff frequency to isolate the low end for the rumble effect.
-        cutoff_freq = 250  # Frequencies below 250 Hz will get reverb.
+        cutoff_freq = self.voice_rumble_cutoff  # Use configurable cutoff frequency
 
         # 2. Create and apply a low-pass filter to get only the low frequencies.
         nyquist = 0.5 * self.samplerate
@@ -443,14 +457,15 @@ class S2S:
         b, a = butter(4, normal_cutoff, btype='low', analog=False)
         low_frequencies = lfilter(b, a, audio)
 
-        # Zero the value of some random samples in the low_frequencies array
-        num_zero = int(0.005 * len(low_frequencies))  # Affect 1% of the samples
-        if num_zero > 0:
-            half_indices = np.random.choice(len(low_frequencies), num_zero, replace=False)
-            low_frequencies[half_indices] = 0
+        # Delay the low frequencies by prepending zeros (creates the rumble delay effect)
+        delay_samples = int(self.voice_rumble_delay)  # Use configurable delay
+        low_frequencies_delayed = np.concatenate([np.zeros(delay_samples, dtype=low_frequencies.dtype), low_frequencies])
+        
+        # Pad the original audio to match the length of the delayed low frequencies
+        audio_padded = np.concatenate([audio, np.zeros(delay_samples, dtype=audio.dtype)])
 
-        mix_level = 0.5
-        output = audio + mix_level * low_frequencies
+        mix_level = self.voice_rumble_mix  # Use configurable mix level
+        output = audio_padded + mix_level * low_frequencies_delayed
         # 6. Prevent clipping after mixing the signals together.
         output = np.clip(output, -1.0, 1.0)
         return output.astype(np.float32)

@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QMainWindow, QPushButton, QComboBox, QLabel, QHBoxLayout, QVBoxLayout, QWidget, QSystemTrayIcon, QTextEdit, QDoubleSpinBox
+from PyQt6.QtWidgets import QMainWindow, QPushButton, QComboBox, QLabel, QHBoxLayout, QVBoxLayout, QWidget, QTextEdit, QDoubleSpinBox, QFrame, QSpinBox
 from PyQt6.QtGui import QIcon, QFont, QFontDatabase
 from s2s import S2S
 from subtitles_ui import SubtitleWindow
@@ -11,8 +11,8 @@ class StreamWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle('S2S Audio Stream')
-        self.resize(500, 500)
-        self.setMinimumSize(500, 500)
+        self.resize(0, 0)
+        self.setMinimumSize(0, 0)
 
         # --- Window Icon ---
         self.setWindowIcon(QIcon("icon.png"))
@@ -34,6 +34,13 @@ class StreamWindow(QMainWindow):
             self._hotkey_thread.start()
         except Exception as e:
             print(f"Error setting up global hotkey: {e}")
+
+    def create_horizontal_line(self):
+        """Create a horizontal line separator"""
+        line = QFrame()
+        line.setFrameShape(QFrame.Shape.HLine)
+        line.setFrameShadow(QFrame.Shadow.Sunken)
+        return line
 
     def _setup_global_hotkey(self):
         
@@ -73,6 +80,9 @@ class StreamWindow(QMainWindow):
         self.voice_soft_btn.setMinimumHeight(35)
         self.voice_soft_btn.clicked.connect(self.toggle_voice_soft)
         voice_soft_layout.addWidget(self.voice_soft_btn)
+
+        # soft parameters (second row)
+        voice_soft_params_layout = QHBoxLayout()
         # Soft Cutoff
         self.voice_soft_cutoff_spin = QDoubleSpinBox()
         self.voice_soft_cutoff_spin.setMinimum(0)
@@ -83,7 +93,7 @@ class StreamWindow(QMainWindow):
         self.voice_soft_cutoff_spin.setSuffix(" Hz")
         self.voice_soft_cutoff_spin.setMinimumHeight(35)
         self.voice_soft_cutoff_spin.valueChanged.connect(self.change_voice_soft_cutoff)
-        voice_soft_layout.addWidget(self.voice_soft_cutoff_spin)
+        voice_soft_params_layout.addWidget(self.voice_soft_cutoff_spin)
         # Soft Order
         self.voice_soft_order_spin = QDoubleSpinBox()
         self.voice_soft_order_spin.setMinimum(1)
@@ -93,17 +103,55 @@ class StreamWindow(QMainWindow):
         self.voice_soft_order_spin.setDecimals(0)
         self.voice_soft_order_spin.setMinimumHeight(35)
         self.voice_soft_order_spin.valueChanged.connect(self.change_voice_soft_order)
-        voice_soft_layout.addWidget(self.voice_soft_order_spin)
+        voice_soft_params_layout.addWidget(self.voice_soft_order_spin)
 
         # Rumble
         voice_rumble_layout = QHBoxLayout()
         # Voice Rumble Toggle Button
-        self.voice_rumble_btn = QPushButton('Voice Tune: False')
+        self.voice_rumble_btn = QPushButton('Voice Tune: True')
         self.voice_rumble_btn.setCheckable(True)
-        self.voice_rumble_btn.setChecked(False)
+        self.voice_rumble_btn.setChecked(True)
         self.voice_rumble_btn.setMinimumHeight(35)
         self.voice_rumble_btn.clicked.connect(self.toggle_voice_rumble)
         voice_rumble_layout.addWidget(self.voice_rumble_btn)
+
+        # Rumble parameters (second row)
+        voice_rumble_params_layout = QHBoxLayout()
+        # Rumble Cutoff Frequency
+        self.voice_rumble_cutoff_spin = QDoubleSpinBox()
+        self.voice_rumble_cutoff_spin.setMinimum(50)
+        self.voice_rumble_cutoff_spin.setMaximum(1000)
+        self.voice_rumble_cutoff_spin.setSingleStep(10)
+        self.voice_rumble_cutoff_spin.setValue(250)
+        self.voice_rumble_cutoff_spin.setSuffix(" Hz (cutoff)")
+        self.voice_soft_cutoff_spin.setDecimals(0)
+        self.voice_rumble_cutoff_spin.setMinimumHeight(35)
+        self.voice_rumble_cutoff_spin.valueChanged.connect(self.change_voice_rumble_cutoff)
+        voice_rumble_params_layout.addWidget(self.voice_rumble_cutoff_spin)
+        
+        # Rumble Delay
+        self.voice_rumble_delay_spin = QDoubleSpinBox()
+        self.voice_rumble_delay_spin.setMinimum(0)
+        self.voice_rumble_delay_spin.setMaximum(500)
+        self.voice_rumble_delay_spin.setSingleStep(5)
+        self.voice_rumble_delay_spin.setValue(50)
+        self.voice_rumble_delay_spin.setSuffix(" samples (delay)")
+        self.voice_soft_cutoff_spin.setDecimals(0)
+        self.voice_rumble_delay_spin.setMinimumHeight(35)
+        self.voice_rumble_delay_spin.valueChanged.connect(self.change_voice_rumble_delay)
+        voice_rumble_params_layout.addWidget(self.voice_rumble_delay_spin)
+        
+        # Rumble Mix Level
+        self.voice_rumble_mix_spin = QDoubleSpinBox()
+        self.voice_rumble_mix_spin.setMinimum(0.0)
+        self.voice_rumble_mix_spin.setMaximum(2.0)
+        self.voice_rumble_mix_spin.setSingleStep(0.1)
+        self.voice_rumble_mix_spin.setValue(1.0)
+        self.voice_rumble_mix_spin.setDecimals(1)
+        self.voice_rumble_mix_spin.setSuffix("x (mix)")
+        self.voice_rumble_mix_spin.setMinimumHeight(35)
+        self.voice_rumble_mix_spin.valueChanged.connect(self.change_voice_rumble_mix)
+        voice_rumble_params_layout.addWidget(self.voice_rumble_mix_spin)
 
         # Pitch and Seed
         voice_basic_layout = QHBoxLayout()
@@ -157,12 +205,32 @@ class StreamWindow(QMainWindow):
         layout = QVBoxLayout()
         layout.setSpacing(15)
         layout.setContentsMargins(20, 20, 20, 20)
+        
+        # Model selection section
         layout.addLayout(model_layout)
-        layout.addLayout(voice_soft_layout)
-        layout.addLayout(voice_rumble_layout)
-        layout.addLayout(voice_basic_layout)
+        layout.addWidget(self.create_horizontal_line())
+        
+        # Font section
         layout.addLayout(font_layout)
+        layout.addWidget(self.create_horizontal_line())
+        
+        # Voice processing section
+        layout.addLayout(voice_soft_layout)
+        layout.addLayout(voice_soft_params_layout)
+        layout.addWidget(self.create_horizontal_line())
+        
+        # Voice rumble section
+        layout.addLayout(voice_rumble_layout)
+        layout.addLayout(voice_rumble_params_layout)
+        layout.addWidget(self.create_horizontal_line())
+        
+        # Voice basic settings section
+        layout.addLayout(voice_basic_layout)
+        layout.addWidget(self.create_horizontal_line())
+        
+        # Manual text input section
         layout.addLayout(text_layout)
+        layout.addWidget(self.create_horizontal_line())
         layout.addWidget(stream_layout)
 
         container = QWidget()
@@ -218,6 +286,30 @@ class StreamWindow(QMainWindow):
             self.s2s.change_voice_rumble(is_checked)
         except Exception as e:
             print(f"Error changing Tune voice:: {e}")
+
+    def change_voice_rumble_cutoff(self):
+        """Change the rumble cutoff frequency"""
+        value = self.voice_rumble_cutoff_spin.value()
+        try:
+            self.s2s.change_voice_rumble_cutoff(value)
+        except Exception as e:
+            print(f"Error changing rumble cutoff: {e}")
+
+    def change_voice_rumble_delay(self):
+        """Change the rumble delay"""
+        value = self.voice_rumble_delay_spin.value()
+        try:
+            self.s2s.change_voice_rumble_delay(value)
+        except Exception as e:
+            print(f"Error changing rumble delay: {e}")
+
+    def change_voice_rumble_mix(self):
+        """Change the rumble mix level"""
+        value = self.voice_rumble_mix_spin.value()
+        try:
+            self.s2s.change_voice_rumble_mix(value)
+        except Exception as e:
+            print(f"Error changing rumble mix: {e}")
 
     def change_voice_speed(self):
         value = self.voice_speed_spin.value()

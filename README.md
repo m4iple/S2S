@@ -61,11 +61,12 @@ python ./main.py
 # TODO
 - Subtitles getting stuck
   - firgure out why
-  - add cear button that force clears the subtitle array
+
+# Rewrite in future
+- Subtitles
+- Debug
 
 
 # AI disclosure:
 - UI - i hate to make UI's
-- Subtitles - i was too lazy - will prob rewrite it
-- Some Debug function - again i was too lazy - will prob rewrite it
 - Used as faster google
