@@ -23,7 +23,7 @@ class DebugTimer:
         self.active_timers = {}  # Currently running timers
         self.temp_path = "./.temp"
         self.db_connection = None
-        self.db_path = "C:/Users/Aspen/Documents/Programing/database/database.db"
+        self.db_path = "C:/Users/Aspen/Dev/database/database.db"
         self._init_database()
         
 
