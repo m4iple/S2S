@@ -1,4 +1,3 @@
-
 torch
 torchvision
 torchaudio
@@ -13,3 +12,4 @@ pyrubberband
 numpy
 keyboard
 pedalboard
+nemo_toolkit[asr]

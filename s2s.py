@@ -10,20 +10,12 @@ import queue
 import os
 import pyrubberband as rb
 import onnxruntime
+from scipy.signal import butter, lfilter
+import nemo.collections.asr as nemo_asr
+import wave
+
 from model_functions import get_model_path
 from debug import start_timer, end_timer, print_timing_summary
-
-from scipy.signal import resample, butter, lfilter, convolve
-from pedalboard import Reverb
-
-def load_whisper_model():
-    """Loads the Faster Whisper model. For cpu set device to 'cpu' and set compute_type to 'int8'."""
-    whisper_model = faster_whisper.WhisperModel(
-        'distil-small.en', 
-        device = 'cuda', 
-        compute_type = 'float16'
-    )
-    return whisper_model
 
 class S2S:
     def __init__(self, subtitle_window=None):
@@ -70,7 +62,9 @@ class S2S:
 
 
         # --- stt settings ---
-        self.text_model = load_whisper_model()
+        # self.text_model = self.load_whisper_model()
+        print("Loading the NVIDA NeMo ASR Model ...")
+        self.text_model = self.load_nemo_asr_model()
         # The initial prompt helps the model recognize specific words or names.
         self.whisper_prompt = "The quick brown fox jumps over the lazy dog. Some names I might say are Xylia, Kaelen, and Zephyr."
 
@@ -98,7 +92,7 @@ class S2S:
         # --- Voice rumble settings ---
         self.voice_rumble = True
         self.voice_rumble_cutoff = 250
-        self.voice_rumble_delay = 50
+        self.voice_rumble_delay = 50 
         self.voice_rumble_mix = 1.0
 
         # --- Voice Basic settings ---
@@ -146,6 +140,23 @@ class S2S:
     def change_voice_rumble_mix(self, data):
         """Change the rumble mix level"""
         self.voice_rumble_mix = data
+
+    def load_whisper_model(self):
+        """Loads the Faster Whisper model. For cpu set device to 'cpu' and set compute_type to 'int8'."""
+        whisper_model = faster_whisper.WhisperModel(
+            'distil-small.en', 
+            device = 'cuda', 
+            compute_type = 'float16'
+        )
+        return whisper_model
+
+    def load_nemo_asr_model(self):
+        """Loads the NVIDA NeMo ASR model."""
+        asr_model = nemo_asr.models.EncDecRNNTBPEModel.from_pretrained("nvidia/canary-1b")
+        asr_model = asr_model.cuda()
+        asr_model.eval()
+        return asr_model
+        
 
     def start_stream(self):
         """Start the audio Stream"""
@@ -252,7 +263,8 @@ class S2S:
         self.audio_copy = self.speech_audio_buffer.clone().cpu().numpy()
 
         start_timer('complete')
-        text, last_word_end_time = self.whisper_transcribe(audio_to_process)
+        # text, last_word_end_time = self.whisper_transcribe(audio_to_process)
+        text, last_word_end_time = self.nemo_transcrbe(audio_to_process)
 
         if text.strip():
             start_timer('synthesis_total')
@@ -262,17 +274,18 @@ class S2S:
         end_timer('complete')
         print_timing_summary(text.strip(), True, self.tts_output_buffer)
 
-        if is_final_chunk:
-            self.speech_audio_buffer = torch.empty(0)
-        else:
-            # Convert the end time of the last word to a frame index
-            last_frame = int(last_word_end_time * self.vad_samplerate)
-            # Trim the buffer to keep only the audio that hasn't been transcribed
-            if last_frame < self.speech_audio_buffer.shape[0]:
-                 self.speech_audio_buffer = self.speech_audio_buffer[last_frame:]
-            else:
-                 # This can happen if whisper processes the whole chunk
-                 self.speech_audio_buffer = torch.empty(0)
+        self.speech_audio_buffer = torch.empty(0)
+        # if is_final_chunk:
+        #     self.speech_audio_buffer = torch.empty(0)
+        # else:
+        #     # Convert the end time of the last word to a frame index
+        #     last_frame = int(last_word_end_time * self.vad_samplerate)
+        #     # Trim the buffer to keep only the audio that hasn't been transcribed
+        #     if last_frame < self.speech_audio_buffer.shape[0]:
+        #          self.speech_audio_buffer = self.speech_audio_buffer[last_frame:]
+        #     else:
+        #          # This can happen if whisper processes the whole chunk
+        #          self.speech_audio_buffer = torch.empty(0)
 
     def _processing_loop(self):
         """Processing thread"""
@@ -363,6 +376,43 @@ class S2S:
         result = "".join(full_text).strip()
         
         return result, last_word_end_time
+    
+    def nemo_transcrbe(self, audio):
+        """Transcribes audio using Nemo and returns the text."""
+        start_timer('stt')
+
+        # NeMo wants a wav, 16kHz
+        temp_file = "temp_audio.wav" # DEBUG? needs a unique name?
+
+        # convert audio to int16 format
+        audio_int16 = np.int16(audio * 32767)
+
+        # write into wave file
+        with wave.open(temp_file, 'wb') as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2) # 16-bit
+            wf.setframerate(self.vad_samplerate)
+            wf.writeframes(audio_int16.tobytes())
+        
+        # transcribe the audio wav file
+        hypotheses = self.text_model.transcribe([temp_file], batch_size=1)
+
+        # clean up audio file
+        os.remove(temp_file)
+
+        end_timer('stt')
+
+        start_timer('stt_text')
+        full_text = ""
+
+        if hypotheses and hypotheses[0]:
+            full_text = hypotheses[0][0]
+
+        # NeMo doest have word timings
+        last_word_end_time = 0
+        end_timer('stt_text')
+
+        return full_text.strip(), last_word_end_time
 
 
     def resample_audio(self, audio_tensor, original_rate, target_rate):
