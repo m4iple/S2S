@@ -16,6 +16,7 @@ import wave
 
 from model_functions import get_model_path
 from debug import start_timer, end_timer, print_timing_summary
+import time
 
 class S2S:
     def __init__(self, subtitle_window=None):
@@ -381,32 +382,24 @@ class S2S:
         """Transcribes audio using Nemo and returns the text."""
         start_timer('stt')
 
-        # NeMo wants a wav, 16kHz
-        temp_file = "temp_audio.wav" # DEBUG? needs a unique name?
-
-        # convert audio to int16 format
-        audio_int16 = np.int16(audio * 32767)
-
-        # write into wave file
-        with wave.open(temp_file, 'wb') as wf:
-            wf.setnchannels(1)
-            wf.setsampwidth(2) # 16-bit
-            wf.setframerate(self.vad_samplerate)
-            wf.writeframes(audio_int16.tobytes())
-        
-        # transcribe the audio wav file
-        hypotheses = self.text_model.transcribe([temp_file], batch_size=1)
-
-        # clean up audio file
-        os.remove(temp_file)
+        hypotheses = self.text_model.transcribe(
+            [audio],
+            batch_size=1,
+            source_lang='en',
+            target_lang="en",
+            task='asr',
+            pnc='yes',
+            verbose=False
+        )
 
         end_timer('stt')
 
         start_timer('stt_text')
         full_text = ""
 
-        if hypotheses and hypotheses[0]:
-            full_text = hypotheses[0][0]
+        if hypotheses:
+            print(hypotheses)
+            full_text = hypotheses[0].text
 
         # NeMo doest have word timings
         last_word_end_time = 0
