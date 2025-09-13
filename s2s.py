@@ -7,16 +7,12 @@ import faster_whisper
 import numpy as np
 import threading
 import queue
-import os
 import pyrubberband as rb
 import onnxruntime
 from scipy.signal import butter, lfilter
 import nemo.collections.asr as nemo_asr
-import wave
-
 from model_functions import get_model_path
 from debug import start_timer, end_timer, print_timing_summary
-import time
 
 class S2S:
     def __init__(self, subtitle_window=None):
@@ -61,11 +57,11 @@ class S2S:
         self.max_buffer_frames = int(1.5 * self.vad_samplerate)
         self.process_now = False
 
-
+        self.active_stt = "nemo"
         # --- stt settings ---
-        # self.text_model = self.load_whisper_model()
-        print("Loading the NVIDA NeMo ASR Model ...")
-        self.text_model = self.load_nemo_asr_model()
+        print("Loading the ASR Model ...")
+        self.text_model_whisper = self.load_whisper_model()
+        self.text_model_nemo = self.load_nemo_asr_model()
         # The initial prompt helps the model recognize specific words or names.
         self.whisper_prompt = "The quick brown fox jumps over the lazy dog. Some names I might say are Xylia, Kaelen, and Zephyr."
 
@@ -264,8 +260,10 @@ class S2S:
         self.audio_copy = self.speech_audio_buffer.clone().cpu().numpy()
 
         start_timer('complete')
-        # text, last_word_end_time = self.whisper_transcribe(audio_to_process)
-        text, last_word_end_time = self.nemo_transcrbe(audio_to_process)
+        if self.active_stt == "nemo":
+            text, last_word_end_time = self.nemo_transcrbe(audio_to_process)
+        elif self.active_stt == "whispser":
+            text, last_word_end_time = self.whisper_transcribe(audio_to_process)
 
         if text.strip():
             start_timer('synthesis_total')
@@ -354,7 +352,7 @@ class S2S:
     def whisper_transcribe(self, audio):
         """Transcribes audio and returns the text and the end time of the last word."""
         start_timer('stt')
-        segments, _ = self.text_model.transcribe(
+        segments, _ = self.text_model_whisper.transcribe(
             audio, 
             language="en", 
             beam_size=1,
@@ -382,7 +380,7 @@ class S2S:
         """Transcribes audio using Nemo and returns the text."""
         start_timer('stt')
 
-        hypotheses = self.text_model.transcribe(
+        hypotheses = self.text_model_nemo.transcribe(
             [audio],
             batch_size=1,
             source_lang='en',
