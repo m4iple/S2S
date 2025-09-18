@@ -10,9 +10,8 @@ import queue
 import pyrubberband as rb
 import onnxruntime
 from scipy.signal import butter, lfilter
-import nemo.collections.asr as nemo_asr
 from model_functions import get_model_path
-from debug import start_timer, end_timer, print_timing_summary
+from debug import start_timer, end_timer, print_timing_summary, save_training_data
 
 class S2S:
     def __init__(self, subtitle_window=None):
@@ -59,13 +58,11 @@ class S2S:
 
         self.stt_models = {
             "Whisper (Distilled)": "whisper",
-            "Nemo Canary": "nemo",
         }
         self.active_stt = "whisper"
         # --- stt settings ---
         print("Loading the ASR Model ...")
         self.text_model_whisper = self.load_whisper_model()
-        self.text_model_nemo = self.load_nemo_asr_model()
         # The initial prompt helps the model recognize specific words or names.
         self.whisper_prompt = ""
 
@@ -151,12 +148,6 @@ class S2S:
         )
         return whisper_model
 
-    def load_nemo_asr_model(self):
-        """Loads the NVIDA NeMo ASR model."""
-        asr_model = nemo_asr.models.EncDecRNNTBPEModel.from_pretrained("nvidia/canary-1b")
-        asr_model = asr_model.cuda()
-        asr_model.eval()
-        return asr_model
         
 
     def start_stream(self):
@@ -264,12 +255,18 @@ class S2S:
         self.audio_copy = self.speech_audio_buffer.clone().cpu().numpy()
 
         start_timer('complete')
-        if self.active_stt == "nemo":
-            text, last_word_end_time = self.nemo_transcrbe(audio_to_process)
-        elif self.active_stt == "whisper":
+        if self.active_stt == "whisper":
             text, last_word_end_time = self.whisper_transcribe(audio_to_process)
+        else:
+            # Handle cases where the STT model is not whisper or is unset
+            print(f"Warning: Active STT model '{self.active_stt}' is not supported. No transcription will be performed.")
+            text = ""
+            last_word_end_time = 0
 
         if text.strip():
+            start_timer('training')
+            save_training_data(text.strip(), audio_to_process)
+            end_timer('training')
             start_timer('synthesis_total')
             self._synthesize_and_buffer_text(text)
             end_timer('synthesis_total')
@@ -382,35 +379,6 @@ class S2S:
         
         return result, last_word_end_time
     
-    def nemo_transcrbe(self, audio):
-        """Transcribes audio using Nemo and returns the text."""
-        start_timer('stt')
-
-        hypotheses = self.text_model_nemo.transcribe(
-            [audio],
-            batch_size=1,
-            source_lang='en',
-            target_lang="en",
-            task='asr',
-            pnc='yes',
-            verbose=False
-        )
-
-        end_timer('stt')
-
-        start_timer('stt_text')
-        full_text = ""
-
-        if hypotheses:
-            print(hypotheses)
-            full_text = hypotheses[0].text
-
-        # NeMo doest have word timings
-        last_word_end_time = 0
-        end_timer('stt_text')
-
-        return full_text.strip(), last_word_end_time
-
 
     def resample_audio(self, audio_tensor, original_rate, target_rate):
         if original_rate == target_rate:

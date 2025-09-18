@@ -1,8 +1,9 @@
-from PyQt6.QtWidgets import QMainWindow, QPushButton, QComboBox, QLabel, QHBoxLayout, QVBoxLayout, QWidget, QTextEdit, QDoubleSpinBox, QFrame, QSpinBox
+from PyQt6.QtWidgets import QMainWindow, QPushButton, QComboBox, QLabel, QHBoxLayout, QVBoxLayout, QWidget, QTextEdit, QDoubleSpinBox, QFrame, QSpinBox, QCheckBox
 from PyQt6.QtGui import QIcon, QFont, QFontDatabase
 from s2s import S2S
 from subtitles_ui import SubtitleWindow
 from model_functions import get_all_models
+from debug import set_capture_training_data
 import threading
 import keyboard
 import os
@@ -242,12 +243,27 @@ class StreamWindow(QMainWindow):
         # Manual text input section
         layout.addLayout(text_layout)
         layout.addWidget(self.create_horizontal_line())
+
+        # Debug/Training Data Section
+        debug_layout = QHBoxLayout()
+        self.capture_training_data_checkbox = QCheckBox("Capture Training Data")
+        self.capture_training_data_checkbox.stateChanged.connect(self.toggle_capture_training_data)
+        debug_layout.addWidget(self.capture_training_data_checkbox)
+        layout.addLayout(debug_layout)
+        layout.addWidget(self.create_horizontal_line())
+
         layout.addWidget(stream_layout)
 
         container = QWidget()
         container.setLayout(layout)
         self.setCentralWidget(container)
 
+    def toggle_capture_training_data(self, state):
+        """Toggle the capturing of training data."""
+        enabled = state == 2  # 2 means checked
+        set_capture_training_data(enabled)
+        print(f"Training data capture {'enabled' if enabled else 'disabled'}.")
+    
     def populate_fonts(self):
         """Populate the font dropdown with fonts from .fonts folder only"""
 
@@ -268,7 +284,6 @@ class StreamWindow(QMainWindow):
                             # If this matches the current font, remember its index
                             if loaded_font == current_font_name:
                                 font_index_to_select = self.font_combo.count() - 1
-            
             # Set the combo box to the current font being used
             if self.font_combo.count() > 0:
                 self.font_combo.setCurrentIndex(font_index_to_select)

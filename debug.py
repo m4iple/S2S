@@ -13,6 +13,7 @@ import sqlite3
 # Global debug flag
 DEBUG = True
 DATABASE = True
+CAPTURE_TRAINING_DATA = False
 
 class DebugTimer:
     """Performance timing collector with statistics"""
@@ -42,8 +43,16 @@ class DebugTimer:
             cur.execute("""CREATE TABLE IF NOT EXISTS s2s_transcript (
                 id VARCHAR(50) PRIMARY KEY, 
                 transcript TEXT, 
-                audio_length INT, 
+                audio_length INTEGER, 
                 timings TEXT, 
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )""")
+            cur.execute("""CREATE TABLE IF NOT EXISTS s2s_training_data (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                transcript TEXT,
+                audio_blob BLOB,
+                is_reviewed INTEGER,
+                is_trained INTEGER,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
             )""")
             self.db_connection.commit()
@@ -133,6 +142,48 @@ class DebugTimer:
         
         return self.save_database_data(record_id, transcript, audio_length, timings_json)
 
+    def save_training_data(self, transcript, audio_data):
+        """Save training data (audio and transcript) to the database."""
+        if not CAPTURE_TRAINING_DATA:
+            return False
+
+        if not self.db_connection:
+            print("Database not initialized, cannot save training data")
+            return False
+
+        try:
+            # Convert audio data to bytes
+            if isinstance(audio_data, torch.Tensor):
+                audio_np = audio_data.cpu().numpy()
+            elif isinstance(audio_data, np.ndarray):
+                audio_np = audio_data
+            else:
+                print(f"Unsupported audio data type for training data: {type(audio_data)}")
+                return False
+            
+            # Ensure audio is in int16 format before saving as blob
+            if audio_np.dtype == np.float32 or audio_np.dtype == np.float64:
+                audio_np = np.clip(audio_np, -1.0, 1.0)
+                audio_int16 = np.int16(audio_np * 32767)
+            elif audio_np.dtype == np.int16:
+                audio_int16 = audio_np
+            else:
+                audio_np = audio_np.astype(np.float32)
+                audio_np = np.clip(audio_np, -1.0, 1.0)
+                audio_int16 = np.int16(audio_np * 32767)
+
+            audio_blob = audio_int16.tobytes()
+
+            cur = self.db_connection.cursor()
+            cur.execute("INSERT INTO s2s_training_data (transcript, audio_blob) VALUES (?, ?)",
+                       (transcript, audio_blob))
+            self.db_connection.commit()
+            print("Training data saved to database.")
+            return True
+        except sqlite3.Error as e:
+            print(f"Database save error for training data: {e}")
+            return False
+
     def __del__(self):
         """Cleanup database connection when object is destroyed"""
         self.close_database()
@@ -181,7 +232,7 @@ class DebugTimer:
         
         # Define the order we want to display timings
         timing_order = [
-            'complete', 'buffer_prep', 'transcription_total', 'stt', "stt_text", 'tts', 'resample', 'audio_mod', 'buffer_ops'
+            'complete', 'buffer_prep', 'transcription_total', 'stt', "stt_text", 'tts', 'resample', 'audio_mod', 'buffer_ops', 'training'
         ]
         
         total_measured = 0
@@ -355,6 +406,18 @@ def is_database_enabled():
     """Return whether the global database toggle is enabled."""
     return DATABASE
 
+
+def set_capture_training_data(enabled: bool):
+    """Enable or disable capturing of training data."""
+    global CAPTURE_TRAINING_DATA
+    CAPTURE_TRAINING_DATA = bool(enabled)
+
+
+def is_capture_training_data_enabled():
+    """Return whether capturing training data is enabled."""
+    return CAPTURE_TRAINING_DATA
+
+
 # Context manager for timing
 def timer(name):
     """Context manager for timing code blocks
@@ -369,6 +432,10 @@ def timer(name):
 def debug_save_audio(audio_data):
     """Save audio data to a temporary file"""
     debug_timer.save_audio(audio_data)
+
+def save_training_data(transcript, audio_data):
+    """Save training data to the database."""
+    return debug_timer.save_training_data(transcript, audio_data)
 
 def calculate_audio_length(audio):
     """Calculates the length of the given audio in milliseconds (assumes 16kHz sample rate)"""
