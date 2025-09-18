@@ -71,6 +71,16 @@ class StreamWindow(QMainWindow):
         model_layout.addWidget(model_label)
         model_layout.addWidget(self.model_combo)
 
+        # STT model selection
+        stt_model_layout = QHBoxLayout()
+        stt_model_label = QLabel('STT Model:')
+        self.stt_model_combo = QComboBox()
+        self.stt_model_combo.setMinimumHeight(30)
+        self.populate_stt_models()
+        self.stt_model_combo.currentTextChanged.connect(self.change_stt_model)
+        stt_model_layout.addWidget(stt_model_label)
+        stt_model_layout.addWidget(self.stt_model_combo)
+
         # Voice Modification Configs
         # Soft voice
         voice_soft_layout = QHBoxLayout()
@@ -208,6 +218,7 @@ class StreamWindow(QMainWindow):
         
         # Model selection section
         layout.addLayout(model_layout)
+        layout.addLayout(stt_model_layout)
         layout.addWidget(self.create_horizontal_line())
         
         # Font section
@@ -419,3 +430,28 @@ class StreamWindow(QMainWindow):
         
         # Accept the close event
         event.accept()
+
+    def populate_stt_models(self):
+        """Populate the STT model dropdown with available models"""
+        self.stt_model_combo.clear()
+        for display_name, key in self.s2s.stt_models.items():
+            self.stt_model_combo.addItem(display_name, key)
+        
+        # Set default active STT model
+        active_model_value = self.s2s.active_stt
+        # Find the key corresponding to the active model value
+        active_model_display_name = [k for k, v in self.s2s.stt_models.items() if v == active_model_value]
+        if active_model_display_name:
+            for i in range(self.stt_model_combo.count()):
+                if self.stt_model_combo.currentText() == active_model_display_name[0]:
+                    self.stt_model_combo.setCurrentIndex(i)
+                    break
+
+    def change_stt_model(self):
+        """Handle STT model selection change"""
+        if self.stt_model_combo.currentText():
+            try:
+                model_display_name = self.stt_model_combo.currentText()
+                self.s2s.set_stt_model(model_display_name)
+            except Exception as e:
+                print(f"Error changing STT model: {e}")

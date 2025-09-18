@@ -57,13 +57,17 @@ class S2S:
         self.max_buffer_frames = int(1.5 * self.vad_samplerate)
         self.process_now = False
 
-        self.active_stt = "nemo"
+        self.stt_models = {
+            "Whisper (Distilled)": "whisper",
+            "Nemo Canary": "nemo",
+        }
+        self.active_stt = "whisper"
         # --- stt settings ---
         print("Loading the ASR Model ...")
         self.text_model_whisper = self.load_whisper_model()
         self.text_model_nemo = self.load_nemo_asr_model()
         # The initial prompt helps the model recognize specific words or names.
-        self.whisper_prompt = "The quick brown fox jumps over the lazy dog. Some names I might say are Xylia, Kaelen, and Zephyr."
+        self.whisper_prompt = ""
 
         # --- Piper settings ---
         print("Loading Piper TTS model...")
@@ -262,7 +266,7 @@ class S2S:
         start_timer('complete')
         if self.active_stt == "nemo":
             text, last_word_end_time = self.nemo_transcrbe(audio_to_process)
-        elif self.active_stt == "whispser":
+        elif self.active_stt == "whisper":
             text, last_word_end_time = self.whisper_transcribe(audio_to_process)
 
         if text.strip():
@@ -274,17 +278,19 @@ class S2S:
         print_timing_summary(text.strip(), True, self.tts_output_buffer)
 
         self.speech_audio_buffer = torch.empty(0)
-        # if is_final_chunk:
-        #     self.speech_audio_buffer = torch.empty(0)
-        # else:
-        #     # Convert the end time of the last word to a frame index
-        #     last_frame = int(last_word_end_time * self.vad_samplerate)
-        #     # Trim the buffer to keep only the audio that hasn't been transcribed
-        #     if last_frame < self.speech_audio_buffer.shape[0]:
-        #          self.speech_audio_buffer = self.speech_audio_buffer[last_frame:]
-        #     else:
-        #          # This can happen if whisper processes the whole chunk
-        #          self.speech_audio_buffer = torch.empty(0)
+
+        if self.active_stt == "whisper":
+            if is_final_chunk:
+               self.speech_audio_buffer = torch.empty(0)
+            else:
+                # Convert the end time of the last word to a frame index
+                last_frame = int(last_word_end_time * self.vad_samplerate)
+                # Trim the buffer to keep only the audio that hasn't been transcribed
+                if last_frame < self.speech_audio_buffer.shape[0]:
+                    self.speech_audio_buffer = self.speech_audio_buffer[last_frame:]
+                else:
+                    # This can happen if whisper processes the whole chunk
+                    self.speech_audio_buffer = torch.empty(0)
 
     def _processing_loop(self):
         """Processing thread"""
@@ -412,6 +418,14 @@ class S2S:
 
         resampler = torchaudio.transforms.Resample(orig_freq=original_rate, new_freq=target_rate)
         return resampler(audio_tensor)
+
+    def set_stt_model(self, model_key):
+        """Switch to a different STT model"""
+        if model_key in self.stt_models:
+            self.active_stt = self.stt_models[model_key]
+            print(f"STT model switched to: {self.active_stt}")
+        else:
+            print(f"Warning: STT model key '{model_key}' not found.")
 
     def set_model(self, model):
         """Switch to a different TTS model"""
