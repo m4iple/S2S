@@ -9,6 +9,7 @@ import torch
 import numpy as np
 import wave
 import sqlite3
+import zlib
 
 # Global debug flag
 DEBUG = True
@@ -38,151 +39,125 @@ class DebugTimer:
 
         try:
             self.db_connection = sqlite3.connect(self.db_path, check_same_thread=False)
+            
+            # Optimize database for faster inserts
             cur = self.db_connection.cursor()
-            # Make shure the table exists
-            cur.execute("""CREATE TABLE IF NOT EXISTS s2s_transcript (
-                id VARCHAR(50) PRIMARY KEY, 
-                transcript TEXT, 
-                audio_length INTEGER, 
-                timings TEXT, 
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-            )""")
-            cur.execute("""CREATE TABLE IF NOT EXISTS s2s_training_data (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                transcript TEXT,
-                audio_blob BLOB,
-                is_reviewed INTEGER,
-                is_trained INTEGER,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-            )""")
+            cur.execute("PRAGMA synchronous = NORMAL")  # Faster than FULL, safer than OFF
+            cur.execute("PRAGMA cache_size = 10000")    # Increase cache size
+            cur.execute("PRAGMA temp_store = MEMORY")   # Use memory for temp operations
+            cur.execute("PRAGMA journal_mode = WAL")    # Write-Ahead Logging for better concurrency
+            
+            # Check if table exists and what columns it has
+            cur.execute("PRAGMA table_info(s2s_training_data)")
+            columns = [row[1] for row in cur.fetchall()]
+            
+            if not columns:  # Table doesn't exist
+                # Create new table with all columns
+                cur.execute("""CREATE TABLE s2s_training_data (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    transcript TEXT,
+                    audio_blob BLOB,
+                    is_reviewed INTEGER,
+                    is_trained INTEGER,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                )""")
+            else:
+                # Table exists, no missing columns to add
+                pass
+            
             self.db_connection.commit()
         except sqlite3.Error as e:
             print(f"Database initialization error: {e}")
             self.db_connection = None
 
-    def save_database_data(self, record_id, transcript, audio_length, timings, timestamp=None):
-        """Save transcription data to database
-        
-        Args:
-            record_id: Unique identifier for the record
-            transcript: The transcribed text
-            audio_length: Length of audio in milliseconds
-            timings: JSON string of timing data
-            timestamp: Optional timestamp (defaults to current time)
-        """
-        # Respect global toggle first
+    def close_database(self):
+        """Close database connection"""
+        if self.db_connection:
+            # Flush any pending commits before closing
+            if hasattr(self, '_pending_inserts') and self._pending_inserts > 0:
+                try:
+                    self.db_connection.commit()
+                    self._pending_inserts = 0
+                except sqlite3.Error as e:
+                    print(f"Error committing pending inserts: {e}")
+            
+            self.db_connection.close()
+            self.db_connection = None
+            
+            # Clean up cursor reference
+            if hasattr(self, '_cursor'):
+                delattr(self, '_cursor')
+
+    def save_training_data(self, transcript, audio_data):
+        """Save training data (audio and transcript) to the database."""
+        # Respect global DATABASE toggle first
         if not DATABASE:
-            print("Database disabled (DATABASE=False), not saving data")
+            return False
+
+        # Block ALL database saves when CAPTURE_TRAINING_DATA is False
+        if not CAPTURE_TRAINING_DATA:
             return False
 
         if not self.db_connection:
-            print("Database not initialized, cannot save data")
             return False
-            
+
         try:
-            cur = self.db_connection.cursor()
-            if timestamp:
-                cur.execute("INSERT INTO s2s_transcript VALUES (?, ?, ?, ?, ?)", 
-                           (record_id, transcript, audio_length, timings, timestamp))
-            else:
-                cur.execute("INSERT INTO s2s_transcript (id, transcript, audio_length, timings) VALUES (?, ?, ?, ?)", 
-                           (record_id, transcript, audio_length, timings))
+            audio_blob = None
+            
+            # Convert audio data to bytes if provided (optimized pipeline)
+            if audio_data is not None:
+                # Optimized conversion pipeline - minimize copies and type checks
+                if isinstance(audio_data, torch.Tensor):
+                    # Direct conversion to int16 if possible
+                    if audio_data.dtype == torch.float32 or audio_data.dtype == torch.float64:
+                        # Clip and convert in one operation
+                        audio_int16 = torch.clamp(audio_data, -1.0, 1.0).mul_(32767).to(torch.int16).cpu().numpy()
+                    else:
+                        audio_int16 = audio_data.cpu().numpy().astype(np.int16)
+                elif isinstance(audio_data, np.ndarray):
+                    if audio_data.dtype in (np.float32, np.float64):
+                        # Use in-place operations where possible
+                        audio_int16 = np.clip(audio_data, -1.0, 1.0, out=None)
+                        audio_int16 = (audio_int16 * 32767).astype(np.int16)
+                    elif audio_data.dtype == np.int16:
+                        audio_int16 = audio_data  # No copy needed
+                    else:
+                        audio_int16 = audio_data.astype(np.int16)
+                else:
+                    return False
+
+                audio_blob = zlib.compress(audio_int16.tobytes(), level=1)  # Fast compression
+
+            # Use existing cursor and prepared statement if available
+            if not hasattr(self, '_cursor'):
+                self._cursor = self.db_connection.cursor()
+                # Prepare the statement once
+                self._prepared_stmt = "INSERT INTO s2s_training_data (transcript, audio_blob) VALUES (?, ?)"
+                self._pending_inserts = 0
+            
+            self._cursor.execute(self._prepared_stmt, (transcript, audio_blob))
+            self._pending_inserts += 1
+            
+            # For real-time usage, commit immediately but reuse cursor
             self.db_connection.commit()
+            self._pending_inserts = 0
+                
             return True
         except sqlite3.Error as e:
             print(f"Database save error: {e}")
             return False
 
-    def close_database(self):
-        """Close database connection"""
-        if self.db_connection:
-            self.db_connection.close()
-            self.db_connection = None
-
-    def get_transcription_history(self, limit=10):
-        """Get recent transcription history from database
-        
-        Args:
-            limit: Maximum number of records to retrieve
-            
-        Returns:
-            List of tuples containing (id, transcript, audio_length, timings, timestamp)
-        """
-        if not DATABASE:
-            print("Database disabled (DATABASE=False), no history available")
-            return []
-
+    def flush_pending_commits(self):
+        """Manually flush any pending database commits"""
         if not self.db_connection:
-            print("Database not initialized")
-            return []
-            
-        try:
-            cur = self.db_connection.cursor()
-            cur.execute("SELECT * FROM s2s_transcript ORDER BY timestamp DESC LIMIT ?", (limit,))
-            return cur.fetchall()
-        except sqlite3.Error as e:
-            print(f"Database query error: {e}")
-            return []
-
-    def save_session_to_database(self, transcript="", audio_length=0):
-        """Save current timing session to database with auto-generated ID"""
-        # Respect global toggle
-        if not DATABASE:
-            print("Database disabled (DATABASE=False), not saving session")
-            return False
-
-        if not self.current_session:
-            return False
-            
-        import json
-        import uuid
+            return
         
-        record_id = str(uuid.uuid4())
-        timings_json = json.dumps(self.current_session)
-        
-        return self.save_database_data(record_id, transcript, audio_length, timings_json)
-
-    def save_training_data(self, transcript, audio_data):
-        """Save training data (audio and transcript) to the database."""
-        if not CAPTURE_TRAINING_DATA:
-            return False
-
-        if not self.db_connection:
-            print("Database not initialized, cannot save training data")
-            return False
-
-        try:
-            # Convert audio data to bytes
-            if isinstance(audio_data, torch.Tensor):
-                audio_np = audio_data.cpu().numpy()
-            elif isinstance(audio_data, np.ndarray):
-                audio_np = audio_data
-            else:
-                print(f"Unsupported audio data type for training data: {type(audio_data)}")
-                return False
-            
-            # Ensure audio is in int16 format before saving as blob
-            if audio_np.dtype == np.float32 or audio_np.dtype == np.float64:
-                audio_np = np.clip(audio_np, -1.0, 1.0)
-                audio_int16 = np.int16(audio_np * 32767)
-            elif audio_np.dtype == np.int16:
-                audio_int16 = audio_np
-            else:
-                audio_np = audio_np.astype(np.float32)
-                audio_np = np.clip(audio_np, -1.0, 1.0)
-                audio_int16 = np.int16(audio_np * 32767)
-
-            audio_blob = audio_int16.tobytes()
-
-            cur = self.db_connection.cursor()
-            cur.execute("INSERT INTO s2s_training_data (transcript, audio_blob) VALUES (?, ?)",
-                       (transcript, audio_blob))
-            self.db_connection.commit()
-            print("Training data saved to database.")
-            return True
-        except sqlite3.Error as e:
-            print(f"Database save error for training data: {e}")
-            return False
+        if hasattr(self, '_pending_inserts') and self._pending_inserts > 0:
+            try:
+                self.db_connection.commit()
+                self._pending_inserts = 0
+            except sqlite3.Error as e:
+                print(f"Error flushing pending commits: {e}")
 
     def __del__(self):
         """Cleanup database connection when object is destroyed"""
@@ -213,13 +188,12 @@ class DebugTimer:
             return 0
         return sum(self.history[name]) / len(self.history[name])
     
-    def print_session_summary(self, transcribed_text="", save_to_db=False, audio_length=0):
+    def print_session_summary(self, transcribed_text="", save_to_db=False):
         """Print timing summary for the current session
         
         Args:
             transcribed_text: The transcribed text to display and optionally save
             save_to_db: Whether to save this session to the database
-            audio_length: Length of the audio in milliseconds (for database)
         """
         if not DEBUG or not self.current_session:
             return
@@ -254,12 +228,7 @@ class DebugTimer:
         
         print("="*60)
         
-        # Save to database if requested
-        if save_to_db:
-            if self.save_session_to_database(transcribed_text, audio_length):
-                print("Item saved to database")
-            else:
-                print("Failed to save session to database")
+        # Note: save_to_db functionality removed - no longer saving timing data
         
         # Clear current session for next cycle
         self.current_session.clear()
@@ -350,20 +319,19 @@ def print_timing_summary(transcribed_text="", save_to_db=False, audio=None):
     
     Args:
         transcribed_text: The transcribed text to display
-        save_to_db: Whether to save this session to the database
-        audio_length: Length of the audio in milliseconds
+        save_to_db: Whether to save this session to the database (deprecated - no longer functional)
+        audio: Audio data (parameter kept for compatibility but not used)
     """
-    audio_length = calculate_audio_length(audio) if audio is not None else 0
-
-    debug_timer.print_session_summary(transcribed_text, save_to_db, audio_length)
+    debug_timer.print_session_summary(transcribed_text, save_to_db)
 
 def clear_timing_history():
     """Clear all timing history"""
     debug_timer.clear_history()
 
 def save_session_to_database(transcript="", audio_length=0):
-    """Save current timing session to database"""
-    return debug_timer.save_session_to_database(transcript, audio_length)
+    """Save current timing session to database (deprecated - no longer functional)"""
+    print("save_session_to_database is deprecated - timing data is no longer saved to database")
+    return False
 
 def close_debug_database():
     """Close the debug database connection"""
