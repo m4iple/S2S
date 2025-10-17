@@ -1,27 +1,27 @@
 # Core ML/AI packages
-torch>=2.5.0
-torchaudio>=2.5.0
-numpy>=1.26.0,<2.0.0
+torch
+torchaudio
+numpy
 
 # Speech Recognition (Whisper)
-faster-whisper>=1.1.0
+faster-whisper
 
 # Text-to-Speech (Piper)
-piper-tts>=1.2.0
+piper-tts
 
 # Voice Activity Detection
-silero-vad>=5.1.2
+silero-vad
 
 # ONNX Runtime (GPU support for CUDA)
-onnxruntime-gpu>=1.19.0
+onnxruntime-gpu
 
 # Audio Processing
-sounddevice>=0.5.1
-scipy>=1.14.0
-pyrubberband>=0.3.0
+sounddevice
+scipy
+pyrubberband
 
 # GUI (PyQt6)
-PyQt6>=6.8.0
+PyQt6
 
 # Utilities
-keyboard>=0.13.5
+keyboard
