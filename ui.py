@@ -8,6 +8,83 @@ import threading
 import keyboard
 import os
 
+# ============================================================================
+# Helper Functions for UI Element Creation
+# ============================================================================
+
+def create_spinbox(min_val, max_val, step, value, suffix="", decimals=0, callback=None, height=35):
+    """Factory function for creating and configuring spinboxes
+    
+    Args:
+        min_val: Minimum value
+        max_val: Maximum value
+        step: Single step increment
+        value: Initial value
+        suffix: Optional suffix text (e.g., " Hz")
+        decimals: Number of decimal places
+        callback: Optional slot to connect valueChanged signal to
+        height: Minimum height in pixels
+        
+    Returns:
+        QDoubleSpinBox: Configured spinbox widget
+    """
+    spin = QDoubleSpinBox()
+    spin.setMinimum(min_val)
+    spin.setMaximum(max_val)
+    spin.setSingleStep(step)
+    spin.setValue(value)
+    spin.setDecimals(decimals)
+    if suffix:
+        spin.setSuffix(suffix)
+    spin.setMinimumHeight(height)
+    if callback:
+        spin.valueChanged.connect(callback)
+    return spin
+
+def create_button(text, callback=None, checkable=False, checked=False, height=35):
+    """Factory function for creating and configuring buttons
+    
+    Args:
+        text: Button text
+        callback: Optional slot to connect clicked signal to
+        checkable: Whether button is checkable/togglable
+        checked: Initial checked state
+        height: Minimum height in pixels
+        
+    Returns:
+        QPushButton: Configured button widget
+    """
+    btn = QPushButton(text)
+    btn.setCheckable(checkable)
+    btn.setChecked(checked)
+    btn.setMinimumHeight(height)
+    if callback:
+        btn.clicked.connect(callback)
+    return btn
+
+def create_combo(items=None, callback=None, height=30):
+    """Factory function for creating and configuring comboboxes
+    
+    Args:
+        items: Optional list of items to add
+        callback: Optional slot to connect currentTextChanged signal to
+        height: Minimum height in pixels
+        
+    Returns:
+        QComboBox: Configured combobox widget
+    """
+    combo = QComboBox()
+    combo.setMinimumHeight(height)
+    if items:
+        combo.addItems(items)
+    if callback:
+        combo.currentTextChanged.connect(callback)
+    return combo
+
+# ============================================================================
+# Main Window Class
+# ============================================================================
+
 class StreamWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -55,147 +132,57 @@ class StreamWindow(QMainWindow):
         self.stream_btn.click()
 
     def init_ui(self):
+        # Stream button
         stream_layout = QHBoxLayout()
-        self.stream_btn = QPushButton('Start Stream')
-        self.stream_btn.setCheckable(True)
-        self.stream_btn.setMinimumHeight(40)
-        self.stream_btn.clicked.connect(self.toggle_stream)
-        stream_layout = (self.stream_btn)
+        self.stream_btn = create_button('Start Stream', self.toggle_stream, checkable=True, height=40)
+        stream_layout.addWidget(self.stream_btn, 1) 
 
         # Model selection
         model_layout = QHBoxLayout()
         model_label = QLabel('Model:')
-        self.model_combo = QComboBox()
-        self.model_combo.setMinimumHeight(30)
+        self.model_combo = create_combo(callback=self.change_model)
         self.populate_models()
-        self.model_combo.currentTextChanged.connect(self.change_model)
         model_layout.addWidget(model_label)
         model_layout.addWidget(self.model_combo)
 
         # STT model selection
         stt_model_layout = QHBoxLayout()
         stt_model_label = QLabel('STT Model:')
-        self.stt_model_combo = QComboBox()
-        self.stt_model_combo.setMinimumHeight(30)
+        self.stt_model_combo = create_combo(callback=self.change_stt_model)
         self.populate_stt_models()
-        self.stt_model_combo.currentTextChanged.connect(self.change_stt_model)
         stt_model_layout.addWidget(stt_model_label)
         stt_model_layout.addWidget(self.stt_model_combo)
 
-        # Voice Modification Configs
-        # Soft voice
-        voice_soft_layout = QHBoxLayout()
-        self.voice_soft_btn = QPushButton('Soft Voice: True')
-        self.voice_soft_btn.setCheckable(True)
-        self.voice_soft_btn.setChecked(True)
-        self.voice_soft_btn.setMinimumHeight(35)
-        self.voice_soft_btn.clicked.connect(self.toggle_voice_soft)
-        voice_soft_layout.addWidget(self.voice_soft_btn)
+        # EQ Filters section (Lowpass and Highpass side by side)
+        eq_buttons_layout = QHBoxLayout()
+        self.lowpass_btn = create_button('Lowpass Filter: True', self.toggle_lowpass_filter, checkable=True, checked=True)
+        self.highpass_btn = create_button('Highpass Filter: False', self.toggle_highpass_filter, checkable=True, checked=False)
+        eq_buttons_layout.addWidget(self.lowpass_btn)
+        eq_buttons_layout.addWidget(self.highpass_btn)
 
-        # soft parameters (second row)
-        voice_soft_params_layout = QHBoxLayout()
-        # Soft Cutoff
-        self.voice_soft_cutoff_spin = QDoubleSpinBox()
-        self.voice_soft_cutoff_spin.setMinimum(0)
-        self.voice_soft_cutoff_spin.setMaximum(10000)
-        self.voice_soft_cutoff_spin.setSingleStep(100)
-        self.voice_soft_cutoff_spin.setValue(6000)
-        self.voice_soft_cutoff_spin.setDecimals(0)
-        self.voice_soft_cutoff_spin.setSuffix(" Hz")
-        self.voice_soft_cutoff_spin.setMinimumHeight(35)
-        self.voice_soft_cutoff_spin.valueChanged.connect(self.change_voice_soft_cutoff)
-        voice_soft_params_layout.addWidget(self.voice_soft_cutoff_spin)
-        # Soft Order
-        self.voice_soft_order_spin = QDoubleSpinBox()
-        self.voice_soft_order_spin.setMinimum(1)
-        self.voice_soft_order_spin.setMaximum(10)
-        self.voice_soft_order_spin.setSingleStep(1)
-        self.voice_soft_order_spin.setValue(2)
-        self.voice_soft_order_spin.setDecimals(0)
-        self.voice_soft_order_spin.setMinimumHeight(35)
-        self.voice_soft_order_spin.valueChanged.connect(self.change_voice_soft_order)
-        voice_soft_params_layout.addWidget(self.voice_soft_order_spin)
+        # Parameters row
+        eq_params_layout = QHBoxLayout()
+        self.lowpass_cutoff_spin = create_spinbox(0, 10000, 100, 6000, " Hz", 0, self.change_lowpass_cutoff)
+        self.lowpass_order_spin = create_spinbox(1, 10, 1, 2, "", 0, self.change_lowpass_order)
+        self.highpass_cutoff_spin = create_spinbox(0, 10000, 10, 80, " Hz", 0, self.change_highpass_cutoff)
+        self.highpass_order_spin = create_spinbox(1, 10, 1, 2, "", 0, self.change_highpass_order)
+        eq_params_layout.addWidget(self.lowpass_cutoff_spin)
+        eq_params_layout.addWidget(self.lowpass_order_spin)
+        eq_params_layout.addWidget(self.highpass_cutoff_spin)
+        eq_params_layout.addWidget(self.highpass_order_spin)
 
-        # Rumble
-        voice_rumble_layout = QHBoxLayout()
-        # Voice Rumble Toggle Button
-        self.voice_rumble_btn = QPushButton('Voice Tune: True')
-        self.voice_rumble_btn.setCheckable(True)
-        self.voice_rumble_btn.setChecked(True)
-        self.voice_rumble_btn.setMinimumHeight(35)
-        self.voice_rumble_btn.clicked.connect(self.toggle_voice_rumble)
-        voice_rumble_layout.addWidget(self.voice_rumble_btn)
-
-        # Rumble parameters (second row)
-        voice_rumble_params_layout = QHBoxLayout()
-        # Rumble Cutoff Frequency
-        self.voice_rumble_cutoff_spin = QDoubleSpinBox()
-        self.voice_rumble_cutoff_spin.setMinimum(50)
-        self.voice_rumble_cutoff_spin.setMaximum(1000)
-        self.voice_rumble_cutoff_spin.setSingleStep(10)
-        self.voice_rumble_cutoff_spin.setValue(250)
-        self.voice_rumble_cutoff_spin.setSuffix(" Hz (cutoff)")
-        self.voice_soft_cutoff_spin.setDecimals(0)
-        self.voice_rumble_cutoff_spin.setMinimumHeight(35)
-        self.voice_rumble_cutoff_spin.valueChanged.connect(self.change_voice_rumble_cutoff)
-        voice_rumble_params_layout.addWidget(self.voice_rumble_cutoff_spin)
-        
-        # Rumble Delay
-        self.voice_rumble_delay_spin = QDoubleSpinBox()
-        self.voice_rumble_delay_spin.setMinimum(0)
-        self.voice_rumble_delay_spin.setMaximum(500)
-        self.voice_rumble_delay_spin.setSingleStep(5)
-        self.voice_rumble_delay_spin.setValue(50)
-        self.voice_rumble_delay_spin.setSuffix(" samples (delay)")
-        self.voice_soft_cutoff_spin.setDecimals(0)
-        self.voice_rumble_delay_spin.setMinimumHeight(35)
-        self.voice_rumble_delay_spin.valueChanged.connect(self.change_voice_rumble_delay)
-        voice_rumble_params_layout.addWidget(self.voice_rumble_delay_spin)
-        
-        # Rumble Mix Level
-        self.voice_rumble_mix_spin = QDoubleSpinBox()
-        self.voice_rumble_mix_spin.setMinimum(0.0)
-        self.voice_rumble_mix_spin.setMaximum(2.0)
-        self.voice_rumble_mix_spin.setSingleStep(0.1)
-        self.voice_rumble_mix_spin.setValue(1.0)
-        self.voice_rumble_mix_spin.setDecimals(1)
-        self.voice_rumble_mix_spin.setSuffix("x (mix)")
-        self.voice_rumble_mix_spin.setMinimumHeight(35)
-        self.voice_rumble_mix_spin.valueChanged.connect(self.change_voice_rumble_mix)
-        voice_rumble_params_layout.addWidget(self.voice_rumble_mix_spin)
-
-        # Pitch and Seed
+        # Voice basic settings
         voice_basic_layout = QHBoxLayout()
-        # TTS speed
-        self.voice_speed_spin = QDoubleSpinBox()
-        self.voice_speed_spin.setMinimum(0.0)
-        self.voice_speed_spin.setMaximum(2.0)
-        self.voice_speed_spin.setSingleStep(0.01)
-        self.voice_speed_spin.setValue(1.0)
-        self.voice_speed_spin.setDecimals(2)
-        self.voice_speed_spin.setSuffix("x (speed)")
-        self.voice_speed_spin.setMinimumHeight(35)
-        self.voice_speed_spin.valueChanged.connect(self.change_voice_speed)
+        self.voice_speed_spin = create_spinbox(0.0, 2.0, 0.01, 1.0, "x (speed)", 2, self.change_voice_speed)
+        self.voice_pitch_spin = create_spinbox(-20.0, 20.0, 0.1, 0.0, " st (pitch)", 1, self.change_voice_pitch)
         voice_basic_layout.addWidget(self.voice_speed_spin)
-        # TTS Pitch
-        self.voice_pitch_spin = QDoubleSpinBox()
-        self.voice_pitch_spin.setMinimum(-20.0)
-        self.voice_pitch_spin.setMaximum(20.0)
-        self.voice_pitch_spin.setSingleStep(0.1)
-        self.voice_pitch_spin.setValue(0.0)
-        self.voice_pitch_spin.setDecimals(1)
-        self.voice_pitch_spin.setSuffix(" st (pitch)")
-        self.voice_pitch_spin.setMinimumHeight(35)
-        self.voice_pitch_spin.valueChanged.connect(self.change_voice_pitch)
         voice_basic_layout.addWidget(self.voice_pitch_spin)
 
         # Font selection
         font_layout = QHBoxLayout()
         font_label = QLabel('Subtitle Font:')
-        self.font_combo = QComboBox()
-        self.font_combo.setMinimumHeight(30)
+        self.font_combo = create_combo(callback=self.change_font)
         self.populate_fonts()
-        self.font_combo.currentTextChanged.connect(self.change_font)
         font_layout.addWidget(font_label)
         font_layout.addWidget(self.font_combo)
 
@@ -206,9 +193,7 @@ class StreamWindow(QMainWindow):
         self.text_input.setMinimumHeight(80)
         self.text_input.setMaximumHeight(120)
         self.text_input.setPlaceholderText('Enter text to synthesize...')
-        self.synthesize_btn = QPushButton('Synthesize')
-        self.synthesize_btn.setMinimumHeight(35)
-        self.synthesize_btn.clicked.connect(self.synthesize_text)
+        self.synthesize_btn = create_button('Synthesize', self.synthesize_text)
         text_layout.addWidget(text_label)
         text_layout.addWidget(self.text_input)
         text_layout.addWidget(self.synthesize_btn)
@@ -226,14 +211,9 @@ class StreamWindow(QMainWindow):
         layout.addLayout(font_layout)
         layout.addWidget(self.create_horizontal_line())
         
-        # Voice processing section
-        layout.addLayout(voice_soft_layout)
-        layout.addLayout(voice_soft_params_layout)
-        layout.addWidget(self.create_horizontal_line())
-        
-        # Voice rumble section
-        layout.addLayout(voice_rumble_layout)
-        layout.addLayout(voice_rumble_params_layout)
+        # EQ Filters section (Lowpass and Highpass)
+        layout.addLayout(eq_buttons_layout)
+        layout.addLayout(eq_params_layout)
         layout.addWidget(self.create_horizontal_line())
         
         # Voice basic settings section
@@ -252,7 +232,7 @@ class StreamWindow(QMainWindow):
         layout.addLayout(debug_layout)
         layout.addWidget(self.create_horizontal_line())
 
-        layout.addWidget(stream_layout)
+        layout.addLayout(stream_layout)
 
         container = QWidget()
         container.setLayout(layout)
@@ -295,47 +275,55 @@ class StreamWindow(QMainWindow):
             self.subtitle_window.change_font(font_name)
 
 
-    def toggle_voice_soft(self):
-        """Toggle the soft voice"""
-        is_checked = self.voice_soft_btn.isChecked()
-        self.voice_soft_btn.setText(f'Soft Voice: {str(is_checked)}')
+    def toggle_lowpass_filter(self):
+        """Toggle the lowpass filter"""
+        is_checked = self.lowpass_btn.isChecked()
+        self.lowpass_btn.setText(f'Lowpass Filter: {str(is_checked)}')
         try:
-            self.s2s.chage_voice_soft(is_checked)
+            self.s2s.toggle_lowpass_filter(is_checked)
         except Exception as e:
-            print(f"Error changing soft voice:: {e}")
+            print(f"Error toggling lowpass filter: {e}")
 
-    def toggle_voice_rumble(self):
-        """Toggle the rumble voice"""
-        is_checked = self.voice_rumble_btn.isChecked()
-        self.voice_rumble_btn.setText(f'Voice Tune: {str(is_checked)}')
+    def change_lowpass_cutoff(self):
+        """Change the lowpass cutoff frequency"""
+        value = self.lowpass_cutoff_spin.value()
         try:
-            self.s2s.change_voice_rumble(is_checked)
+            self.s2s.change_lowpass_cutoff(value)
         except Exception as e:
-            print(f"Error changing Tune voice:: {e}")
+            print(f"Error changing lowpass cutoff: {e}")
 
-    def change_voice_rumble_cutoff(self):
-        """Change the rumble cutoff frequency"""
-        value = self.voice_rumble_cutoff_spin.value()
+    def change_lowpass_order(self):
+        """Change the lowpass filter order"""
+        value = self.lowpass_order_spin.value()
         try:
-            self.s2s.change_voice_rumble_cutoff(value)
+            self.s2s.change_lowpass_order(value)
         except Exception as e:
-            print(f"Error changing rumble cutoff: {e}")
+            print(f"Error changing lowpass order: {e}")
 
-    def change_voice_rumble_delay(self):
-        """Change the rumble delay"""
-        value = self.voice_rumble_delay_spin.value()
+    def toggle_highpass_filter(self):
+        """Toggle the highpass filter"""
+        is_checked = self.highpass_btn.isChecked()
+        self.highpass_btn.setText(f'Highpass Filter: {str(is_checked)}')
         try:
-            self.s2s.change_voice_rumble_delay(value)
+            self.s2s.toggle_highpass_filter(is_checked)
         except Exception as e:
-            print(f"Error changing rumble delay: {e}")
+            print(f"Error toggling highpass filter: {e}")
 
-    def change_voice_rumble_mix(self):
-        """Change the rumble mix level"""
-        value = self.voice_rumble_mix_spin.value()
+    def change_highpass_cutoff(self):
+        """Change the highpass cutoff frequency"""
+        value = self.highpass_cutoff_spin.value()
         try:
-            self.s2s.change_voice_rumble_mix(value)
+            self.s2s.change_highpass_cutoff(value)
         except Exception as e:
-            print(f"Error changing rumble mix: {e}")
+            print(f"Error changing highpass cutoff: {e}")
+
+    def change_highpass_order(self):
+        """Change the highpass filter order"""
+        value = self.highpass_order_spin.value()
+        try:
+            self.s2s.change_highpass_order(value)
+        except Exception as e:
+            print(f"Error changing highpass order: {e}")
 
     def change_voice_speed(self):
         value = self.voice_speed_spin.value()
@@ -350,20 +338,6 @@ class StreamWindow(QMainWindow):
             self.s2s.change_voice_pitch(value)
         except Exception as e:
             print(f"Error changing voice pitch:: {e}")
-
-    def change_voice_soft_cutoff(self):
-        value = self.voice_soft_cutoff_spin.value()
-        try:
-            self.s2s.change_voice_soft_cuttoff(value)
-        except Exception as e:
-            print(f"Error changing soft voice cutoff:: {e}")
-
-    def change_voice_soft_order(self):
-        value = self.voice_soft_order_spin.value()
-        try:
-            self.s2s.change_voice_soft_order(value)
-        except Exception as e:
-            print(f"Error changing soft voice order:: {e}")
 
     def populate_models(self):
         """Populate the model dropdown with available models"""

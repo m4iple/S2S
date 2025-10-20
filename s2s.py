@@ -82,16 +82,15 @@ class S2S:
         self.monitoring_device_index = 22 # <- hardcoded device change! to see all devices (python -m sounddevice)
         self.monitoring_stream = None
 
-        # --- Voice soft settings ---
-        self.voice_soft = True
-        self.voice_cutoff = 6000
-        self.voice_order = 2
+        # --- Voice lowpass filter settings ---
+        self.lowpass_enabled = True
+        self.lowpass_cutoff = 6000
+        self.lowpass_order = 2
 
-        # --- Voice rumble settings ---
-        self.voice_rumble = True
-        self.voice_rumble_cutoff = 250
-        self.voice_rumble_delay = 50 
-        self.voice_rumble_mix = 1.0
+        # --- Voice highpass filter settings ---
+        self.highpass_enabled = False
+        self.highpass_cutoff = 80
+        self.highpass_order = 2
 
         # --- Voice Basic settings ---
         self.voice_speed = 1.0
@@ -103,17 +102,29 @@ class S2S:
         # --- Pay around ---
         self.audio_copy = None
 
-    def chage_voice_soft(self, data):
-        """Toggle the Soft Voice"""
-        self.voice_soft = data
+    def toggle_lowpass_filter(self, data):
+        """Toggle the Lowpass Filter"""
+        self.lowpass_enabled = data
 
-    def change_voice_soft_cuttoff(self, data):
-        """Change the Soft Voice Cutoff"""
-        self.voice_cutoff = data
+    def change_lowpass_cutoff(self, data):
+        """Change the Lowpass Filter Cutoff"""
+        self.lowpass_cutoff = data
         
-    def change_voice_soft_order(self, data):
-        """Change the Soft Voice Order """
-        self.voice_order = data
+    def change_lowpass_order(self, data):
+        """Change the Lowpass Filter Order"""
+        self.lowpass_order = data
+
+    def toggle_highpass_filter(self, data):
+        """Toggle the Highpass Filter"""
+        self.highpass_enabled = data
+
+    def change_highpass_cutoff(self, data):
+        """Change the Highpass Filter Cutoff"""
+        self.highpass_cutoff = data
+        
+    def change_highpass_order(self, data):
+        """Change the Highpass Filter Order"""
+        self.highpass_order = data
 
     def change_voice_speed(self, data):
         """Change the Speed of the TTS Voice"""
@@ -122,22 +133,6 @@ class S2S:
     def change_voice_pitch(self, data):
         """Change the pitch of the TTS Voice"""
         self.voice_pitch = data
-
-    def change_voice_rumble(self, data):
-        """Toggle Low Rumble"""
-        self.voice_rumble = data
-
-    def change_voice_rumble_cutoff(self, data):
-        """Change the rumble cutoff frequency"""
-        self.voice_rumble_cutoff = data
-
-    def change_voice_rumble_delay(self, data):
-        """Change the rumble delay in samples"""
-        self.voice_rumble_delay = data
-
-    def change_voice_rumble_mix(self, data):
-        """Change the rumble mix level"""
-        self.voice_rumble_mix = data
 
     def load_whisper_model(self):
         """Loads the Faster Whisper model. For cpu set device to 'cpu' and set compute_type to 'int8'."""
@@ -360,8 +355,7 @@ class S2S:
             language="en", 
             beam_size=1,
             word_timestamps=True,
-            vad_filter=True,
-            vad_parameters=dict(min_silence_duration_ms=100, min_speech_duration_ms=100),
+            vad_filter=False,
             initial_prompt=self.whisper_prompt
         )
         end_timer('stt')
@@ -449,46 +443,37 @@ class S2S:
         if self.voice_speed != 1.0:
             modified_audio = rb.time_stretch(modified_audio, self.samplerate, self.voice_speed)
 
-        if self.voice_soft:
-            modified_audio = self.voice_softer(modified_audio)
+        if self.lowpass_enabled:
+            modified_audio = self.lowpass_filter(modified_audio)
         
-        if self.voice_rumble:
-            modified_audio = self.voice_rumble_func(modified_audio)
+        if self.highpass_enabled:
+            modified_audio = self.highpass_filter(modified_audio)
             
         end_timer('audio_mod')
         return modified_audio
     
-    def voice_softer(self, audio):
+    def lowpass_filter(self, audio):
+        """Apply a lowpass filter to the audio"""
         # Nyquist frequency is the highest possible frequency that can be accurately captured and reproduced at a given sample rate.
         nyquist = 0.5 * self.samplerate
-        normal_cutoff = self.voice_cutoff / nyquist
-        b, a = butter(self.voice_order, normal_cutoff, btype='low', analog=False)
+        normal_cutoff = self.lowpass_cutoff / nyquist
+        b, a = butter(self.lowpass_order, normal_cutoff, btype='low', analog=False)
 
         # Apply the filter
-        softened_audio = lfilter(b, a, audio)
+        filtered_audio = lfilter(b, a, audio)
 
-        return softened_audio.astype(np.float32)
+        return filtered_audio.astype(np.float32)
     
-    def voice_rumble_func(self, audio):
-        # 1. Define a cutoff frequency to isolate the low end for the rumble effect.
-        cutoff_freq = self.voice_rumble_cutoff  # Use configurable cutoff frequency
-
-        # 2. Create and apply a low-pass filter to get only the low frequencies.
+    def highpass_filter(self, audio):
+        """Apply a highpass filter to the audio"""
+        # Nyquist frequency is the highest possible frequency that can be accurately captured and reproduced at a given sample rate.
         nyquist = 0.5 * self.samplerate
-        normal_cutoff = cutoff_freq / nyquist
-        # A slightly steeper filter (order=4) works well for isolating the rumble.
-        b, a = butter(4, normal_cutoff, btype='low', analog=False)
-        low_frequencies = lfilter(b, a, audio)
+        normal_cutoff = self.highpass_cutoff / nyquist
+        # Clamp to valid range (0, 1)
+        normal_cutoff = np.clip(normal_cutoff, 0.001, 0.999)
+        b, a = butter(self.highpass_order, normal_cutoff, btype='high', analog=False)
 
-        # Delay the low frequencies by prepending zeros (creates the rumble delay effect)
-        delay_samples = int(self.voice_rumble_delay)  # Use configurable delay
-        low_frequencies_delayed = np.concatenate([np.zeros(delay_samples, dtype=low_frequencies.dtype), low_frequencies])
-        
-        # Pad the original audio to match the length of the delayed low frequencies
-        audio_padded = np.concatenate([audio, np.zeros(delay_samples, dtype=audio.dtype)])
+        # Apply the filter
+        filtered_audio = lfilter(b, a, audio)
 
-        mix_level = self.voice_rumble_mix  # Use configurable mix level
-        output = audio_padded + mix_level * low_frequencies_delayed
-        # 6. Prevent clipping after mixing the signals together.
-        output = np.clip(output, -1.0, 1.0)
-        return output.astype(np.float32)
+        return filtered_audio.astype(np.float32)
