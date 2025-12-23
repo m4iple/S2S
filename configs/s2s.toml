@@ -1,0 +1,54 @@
+[audio]
+samplerate = 48000
+blocksize = 1024
+dtype = "float32"
+channels = 1
+input = -1      # -1 for default
+output = -1     # -1 for default
+
+[monitoring]
+enabled = true
+device = 22
+samplerate = 48000
+blocksize = 1024
+dtype = "float32"
+channels = 1
+
+[vad]
+model = "silero"
+samplerate = 16000
+speech_prob_threshold = 0.5
+buffer_chunk_size = 512
+silence_threshold_frames = 3
+pre_speech_frames = 5
+post_speech_silence_frames = 2
+max_buffer_frames = 72000  # 1.5 seconds at 16kHz
+
+[stt]
+model = "whisper"
+model_path = ".models/stt/distil-small.en"
+device = "cuda"
+compute_type = "float16"
+initial_prompt = ""
+language = "en"
+beam_size = 1
+word_timestamps = True
+vad_filter = False
+
+[tts]
+default_voice = "en_US-hfc_female-medium"
+device = "cuda"
+
+[voice_processing]
+speed = 1.0
+pitch = 0.0
+
+[filters.lowpass]
+enabled = true
+cutoff = 6000
+order = 2
+
+[filters.highpass]
+enabled = false
+cutoff = 80
+order = 2

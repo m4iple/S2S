@@ -9,6 +9,7 @@ import threading
 import queue
 import pyrubberband as rb
 import onnxruntime
+import os
 from scipy.signal import butter, lfilter
 from model_functions import get_model_path
 from debug import start_timer, end_timer, print_timing_summary, save_training_data
@@ -135,9 +136,12 @@ class S2S:
         self.voice_pitch = data
 
     def load_whisper_model(self):
-        """Loads the Faster Whisper model. For cpu set device to 'cpu' and set compute_type to 'int8'."""
+        """Loads the Faster Whisper model from .models/stt/ folder. For cpu set device to 'cpu' and set compute_type to 'int8'."""
+        model_name = 'distil-small.en'
+        model_path = os.path.join('.models/stt', model_name)
+        
         whisper_model = faster_whisper.WhisperModel(
-            'distil-small.en', 
+            model_path, 
             device = 'cuda', 
             compute_type = 'float16'
         )
