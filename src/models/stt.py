@@ -1,27 +1,29 @@
 import faster_whisper
 
-class stt:
+class Stt:
     def __init__(self, config):
-        self.cgf = config["stt"]
+        self.cfg = config["stt"]
         self.model = None
 
         self.load_model()
 
     def load_model(self):
+        """Loads the stt model"""
         self.model = faster_whisper.WhisperModel(
-            self.cgf["model_path"],
-            device=self.cgf["device"],
-            compute_type=self.cgf["compute_type"]
+            self.cfg["model_path"],
+            device=self.cfg["device"],
+            compute_type=self.cfg["compute_type"]
         )
 
     def transcribe(self, audio):
+        """Transcribes the audio"""
         segments, _ = self.model.transcribe(
             audio,
-            language=self.cgf["language"],
-            beam_size=self.cgf["beam_size"],
-            word_timestamps=self.cgf["word_timestamps"],
-            vad_filter=self.cgf["vad_filter"],
-            initial_prompt=self.cgf["initial_prompt"]
+            language=self.cfg["language"],
+            beam_size=self.cfg["beam_size"],
+            word_timestamps=self.cfg["word_timestamps"],
+            vad_filter=self.cfg["vad_filter"],
+            initial_prompt=self.cfg["initial_prompt"]
         )
 
         full_text = []

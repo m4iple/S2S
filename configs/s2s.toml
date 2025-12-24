@@ -37,7 +37,8 @@ vad_filter = False
 
 [tts]
 default_voice = "en_US-hfc_female-medium"
-device = "cuda"
+use_cuda = True
+samplerate = 48000
 
 [voice_processing]
 speed = 1.0
@@ -47,8 +48,12 @@ pitch = 0.0
 enabled = true
 cutoff = 6000
 order = 2
+btype = "low"
+analog = False
 
 [filters.highpass]
 enabled = false
 cutoff = 80
 order = 2
+btype = "high"
+analog = False

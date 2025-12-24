@@ -1,6 +1,6 @@
 # Refactor
 
-## TEMP IDEAS - just wite things down
+## TEMP IDEAS - just wite things down - IGNORE
 - create a general utils folder
 - split up debug - move out the training data saving
 - crate a www folder for the web stuff

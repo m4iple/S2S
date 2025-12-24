@@ -4,6 +4,7 @@ import json
 tts_model_path = '.models/tts'
 
 def get_model_path(model):
+    voice_path = None
     voices_json_path = tts_model_path + '/voices.json'
     if os.path.exists(voices_json_path):
         try:

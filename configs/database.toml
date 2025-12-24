@@ -1,0 +1,7 @@
+[database]
+path = "C:/Users/Aspen/Dev/database/database.db"
+check_same_thread = False
+synchronous = "NORMAL"
+cache_size = 10000
+temp_store = "MEMORY"
+journal_mode = "WAL"

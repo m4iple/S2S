@@ -3,7 +3,7 @@ from silero_vad import load_silero_vad
 
 
 class Vad:
-    def __init__(self, config, ):
+    def __init__(self, config):
         self.cfg = config["vad"]
         self.model = load_silero_vad()
 
