@@ -28,14 +28,12 @@ class Vad:
 
             speech_prob = self.model(chunk, self.cfg["samplerate"]).item()
 
-            # Maintain pre-speech buffer for context
             self.pre_speech_buffer = torch.cat([self.pre_speech_buffer, chunk])
             max_pre_frames = self.cfg["pre_speech_frames"] * self.cfg["buffer_chunk_size"]
             if self.pre_speech_buffer.shape[0] > max_pre_frames:
                 frames_to_remove = self.pre_speech_buffer.shape[0] - max_pre_frames
                 self.pre_speech_buffer = self.pre_speech_buffer[frames_to_remove:]
 
-            # Speech detected
             if speech_prob > self.cfg["speech_prob_threshold"]:
                 self.silence_counter = 0
                 
@@ -47,7 +45,6 @@ class Vad:
 
                 if self.speech_buffer.shape[0] > self.cfg["max_buffer_frames"]:
                     self.process_now = True
-            # Silence detected
             else:
                 if self.is_speaking:
                     if self.silence_counter < self.cfg["post_speech_silence_frames"]:

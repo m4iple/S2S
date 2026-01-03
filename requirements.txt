@@ -23,5 +23,8 @@ pyrubberband
 # GUI (PyQt6)
 PyQt6
 
+# API Server
+Flask
+
 # Utilities
 keyboard

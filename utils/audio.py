@@ -11,7 +11,7 @@ def resample_audio(audio_tensor, original_rate, target_rate):
     try:
         resampler = torchaudio.transforms.Resample(orig_freq=original_rate, new_freq=target_rate)
     except Exception as e:
-        print(f"Error audo resample failed: {e}")
+        print(f"[ERROR] audo resample failed: {e}")
         return audio_tensor
 
     return resampler(audio_tensor)
@@ -43,5 +43,5 @@ def format_for_database(audio):
         return audio_blob
 
     except Exception as e:
-        print(f"Error formating audio as a blob: {e}")
+        print(f"[ERROR] formating audio as a blob: {e}")
         return None

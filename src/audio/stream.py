@@ -33,7 +33,7 @@ class AudioStream:
 
             self.stream.start()
         except Exception as e:
-            print(f"Error: Stream not started: {e}")
+            print(f"[ERROR] Stream not started: {e}")
             self.stream = None
 
         if self.cfg_m["enabled"]:
@@ -48,7 +48,7 @@ class AudioStream:
                 
                 self.monitor_stream.start()
             except Exception as e:
-                print(f"Warning: monitor stream not started: {e}")
+                print(f"[ERROR] monitor stream not started: {e}")
                 self.monitor_stream = None
     
     def stop(self):
@@ -77,6 +77,7 @@ class AudioStream:
         
         if self.monitor_stream is not None:
             try:
-                self.monitor_stream.write(outdata.copy())
+                monitor_channels = self.cfg_m["channels"]
+                self.monitor_stream.write(outdata[:, :monitor_channels].copy())
             except Exception as e:
-                print(f"Error writing to monitor: {e}")
+                print(f"[ERROR] writing to monitor: {e}")

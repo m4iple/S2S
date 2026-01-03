@@ -28,7 +28,6 @@ class Tts:
         audio_output_np = np.frombuffer(wav_bytes, dtype=np.int16).astype(np.float32, copy=False) / 32767.0
 
         resampled = resample_audio(torch.from_numpy(audio_output_np), self.model.config.sample_rate, self.cfg["samplerate"]).cpu().numpy()
-
         return resampled
 
     def get_model_path(self, model):
@@ -49,7 +48,7 @@ class Tts:
                                 voice_path = test_path
                                 break
             except json.JSONDecodeError as e:
-                print(f"Error reading voices.json: {e}")
+                print(f"[ERROR] reading voices.json: {e}")
         
         if not voice_path:
             raise FileNotFoundError(f"No TTS model found. Please ensure you have models in the .models directory.")
@@ -100,5 +99,5 @@ class Tts:
             return available_models
             
         except Exception as e:
-            print(f"Error reading voices.json: {e}")
+            print(f"[ERROR] reading voices.json: {e}")
             return []

@@ -16,10 +16,10 @@ class Database:
             self.connection = sqlite3.connect(self.cfg["path"], check_same_thread=self.cfg["check_same_thread"])
 
             cur = self.connection.cursor()
-            cur.execute("PRAGMA synchronous = " + self.cfg["synchronous"])
-            cur.execute("PRAGMA cache_size = " + self.cfg["cache_size"])
-            cur.execute("PRAGMA temp_store = " + self.cfg["temp_store"])
-            cur.execute("PRAGMA journal_mode = " + self.cfg["journal_mode"])
+            cur.execute("PRAGMA synchronous = " + str(self.cfg["synchronous"]))
+            cur.execute("PRAGMA cache_size = " + str(self.cfg["cache_size"]))
+            cur.execute("PRAGMA temp_store = " + str(self.cfg["temp_store"]))
+            cur.execute("PRAGMA journal_mode = " + str(self.cfg["journal_mode"]))
 
             cur.execute("PRAGMA table_info(s2s_training_data)")
             columns = [row[1] for row in cur.fetchall()]
@@ -29,7 +29,7 @@ class Database:
             
             self.connection.commit()
         except sqlite3.Error as e:
-            print(f"Database init error: {e}")
+            print(f"[ERROR] Database init error: {e}")
             self.connection = None
 
     def close(self):
@@ -68,7 +68,7 @@ class Database:
 
             return True
         except sqlite3.Error as e:
-            print(f"Database save error: {e}")
+            print(f"[ERROR] Database save error: {e}")
             return False
         
     def __del__(self):

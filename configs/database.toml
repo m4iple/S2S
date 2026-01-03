@@ -1,6 +1,6 @@
 [database]
 path = "C:/Users/Aspen/Dev/database/database.db"
-check_same_thread = False
+check_same_thread = false
 synchronous = "NORMAL"
 cache_size = 10000
 temp_store = "MEMORY"

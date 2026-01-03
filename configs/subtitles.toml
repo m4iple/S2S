@@ -1,0 +1,50 @@
+[window]
+width = 1920
+height = 330
+position = "top-center"  # Options: top-center, bottom-center, custom
+frameless = true
+transparent_background = true
+
+[display]
+max_lines = 20
+line_spacing = 5
+fade_duration = 3000  # milliseconds per line before fade out
+word_wrap = false
+alignment = "center"  # Options: left, center, right
+
+[font]
+family = "auto"  # "auto" loads first font from .fonts folder, or specify font name
+size = 24
+color = "#FFFFFF"  # Hex color code
+weight = "normal"  # Options: normal, bold
+style = "normal"  # Options: normal, italic
+
+[animation.appear]
+enabled = true
+duration = 300  # milliseconds
+easing = "OutCubic"  # Options: Linear, InQuad, OutQuad, InOutQuad, InCubic, OutCubic, InOutCubic, InQuart, OutQuart, InOutQuart
+start_opacity = 0.0
+end_opacity = 1.0
+
+[animation.disappear]
+enabled = true
+duration = 200  # milliseconds
+easing = "InCubic"
+start_opacity = 1.0
+end_opacity = 0.0
+
+[animation.move_up]
+enabled = true
+duration = 400  # milliseconds
+easing = "InOutQuart"
+
+[effects]
+shadow = false
+shadow_color = "#000000"
+shadow_offset_x = 2
+shadow_offset_y = 2
+shadow_blur_radius = 5
+
+outline = false
+outline_color = "#000000"
+outline_width = 1

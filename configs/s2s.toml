@@ -1,44 +1,69 @@
+[window]
+title = "S2S Audio Stream"
+width = 400  # 0 = auto-size to content
+height = 0
+min_width = 0
+min_height = 0
+always_on_top = false
+resizable = true
+position = "default"  # Options: default, center, top-left, top-right, bottom-left, bottom-right
+
 [audio]
-samplerate = 48000
-blocksize = 1024
+samplerate = 44100
+blocksize = 256
 dtype = "float32"
-channels = 1
-input = -1      # -1 for default
-output = -1     # -1 for default
+channels = 8
+input = 22
+output = 32
+
+#Device 22: Voicemeeter Out B1 (VB-Audio Voicemeeter VAIO)
+#  Input Channels: 8
+#  Output Channels: 0
+#  Sample Rate: 44100.0 Hz
+
+#Device 32: Voicemeeter VAIO3 Input (VB-Audio Voicemeeter VAIO)
+#  Input Channels: 0
+#  Output Channels: 8
+#  Sample Rate: 44100.0 Hz
 
 [monitoring]
 enabled = true
-device = 22
-samplerate = 48000
-blocksize = 1024
+device = 40
+samplerate = 44100
+blocksize = 512
 dtype = "float32"
-channels = 1
+channels = 2
+
+#Device 40: Voicemeeter AUX Input (VB-Audio Voicemeeter VAIO)
+#  Input Channels: 0
+#  Output Channels: 8
+#  Sample Rate: 44100.0 Hz
 
 [vad]
 model = "silero"
 samplerate = 16000
-speech_prob_threshold = 0.5
+speech_prob_threshold = 0.35
 buffer_chunk_size = 512
-silence_threshold_frames = 3
-pre_speech_frames = 5
-post_speech_silence_frames = 2
-max_buffer_frames = 72000  # 1.5 seconds at 16kHz
+silence_threshold_frames = 0
+pre_speech_frames = 0
+post_speech_silence_frames = 0
+max_buffer_frames = 72000
 
 [stt]
 model = "whisper"
 model_path = ".models/stt/distil-small.en"
 device = "cuda"
 compute_type = "float16"
-initial_prompt = ""
+initial_prompt = "Speech-to-speech translation. Clear voice transcription."
 language = "en"
 beam_size = 1
-word_timestamps = True
-vad_filter = False
+word_timestamps = true
+vad_filter = false
 
 [tts]
 default_voice = "en_US-hfc_female-medium"
-use_cuda = True
-samplerate = 48000
+use_cuda = true
+samplerate = 352800
 
 [voice_processing]
 speed = 1.0
@@ -49,11 +74,11 @@ enabled = true
 cutoff = 6000
 order = 2
 btype = "low"
-analog = False
+analog = false
 
 [filters.highpass]
 enabled = false
 cutoff = 80
 order = 2
 btype = "high"
-analog = False
+analog = false

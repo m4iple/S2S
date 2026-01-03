@@ -9,7 +9,7 @@ class Timing:
         self.active_timers = {}
         self.latency = ()
         self.timing_order = {
-            'complete', 'vad', 'buffer_prep', 'transcription_total', 'stt', 'stt_text', 'tts', 'resample', 'audio_mod', 'buffer_ops', 'training'
+            'complete', 'tensor_ops', 'resample', 'vad', 'cpu_ops', 'buffer_prep', 'transcription_total', 'stt', 'stt_text', 'tts', 'audio_mod', 'buffer_ops', 'training'
         }
 
     def start(self, name):
