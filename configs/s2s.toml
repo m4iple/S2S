@@ -47,8 +47,8 @@ samplerate = 16000
 speech_prob_threshold = 0.35
 buffer_chunk_size = 512
 silence_threshold_frames = 0
-pre_speech_frames = 0
-post_speech_silence_frames = 0
+pre_speech_frames = 5
+post_speech_silence_frames = 5
 max_buffer_frames = 72000
 
 [stt]
