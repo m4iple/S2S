@@ -1,9 +1,9 @@
 import numpy as np
 import torch
+import torchaudio
 import threading
 import queue
 from utils.config import load_config
-from utils.audio import resample_audio
 from utils.timing import Timing
 from utils.database import Database
 from src.audio.stream import AudioStream
@@ -50,6 +50,13 @@ class S2s:
         self.capture_training_data = False
 
         self.output_buffer = np.array([], dtype=self.cfg["audio"]["dtype"])
+        
+        print("[INFO] Initializing Resampler...")
+        self.resampler = torchaudio.transforms.Resample(
+            orig_freq=self.cfg["audio"]["samplerate"], 
+            new_freq=self.cfg["vad"]["samplerate"]
+        )
+        self.raw_input_buffer = torch.empty(0)
 
         print("[INFO] Setting up API server...")
         self.api = ApiServer(self)
@@ -147,6 +154,7 @@ class S2s:
 
     def _processing_loop(self):
         """Main processing loop - threaded"""
+
         while self.stream.is_running.is_set():
             try:
                 indata = self.input_queue.get(timeout=0.1)
@@ -155,24 +163,30 @@ class S2s:
 
                 self.timing.start('tensor_ops')
                 mono_audio_tensor = torch.from_numpy(indata[:, 0]).to(torch.float32)
+                
+                self.raw_input_buffer = torch.cat([self.raw_input_buffer, mono_audio_tensor])
                 self.timing.end('tensor_ops')
 
-                self.timing.start('resample')
-                resampled = resample_audio(mono_audio_tensor, self.cfg["audio"]["samplerate"], self.cfg["vad"]["samplerate"])
-                self.timing.end('resample') 
+                if self.raw_input_buffer.shape[0] >= self.cfg["audio"]["resample_buffer_threshold"]:
+                    
+                    self.timing.start('resample')
+                    # Use the persistent resampler instance
+                    resampled = self.resampler(self.raw_input_buffer)
+                    self.raw_input_buffer = torch.empty(0)
+                    self.timing.end('resample') 
 
-                self.timing.start('vad')
-                speech_audio, should_process = self.vad.process_chunk(resampled)
-                self.timing.end('vad')
+                    self.timing.start('vad')
+                    speech_audio, should_process = self.vad.process_chunk(resampled)
+                    self.timing.end('vad')
 
-                text_for_summary = ""
-                if should_process and speech_audio is not None:
-                    text_for_summary = self._process_speech_chunk(speech_audio) or ""
+                    text_for_summary = ""
+                    if should_process and speech_audio is not None:
+                        text_for_summary = self._process_speech_chunk(speech_audio) or ""
 
-                self.timing.end('complete')
+                    self.timing.end('complete')
 
-                if text_for_summary.strip():
-                    self.timing.print_summary(text_for_summary.strip())
+                    if text_for_summary.strip():
+                        self.timing.print_summary(text_for_summary.strip())
 
             except queue.Empty:
                 continue
