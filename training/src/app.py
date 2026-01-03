@@ -5,11 +5,14 @@ import sys
 import os
 from pathlib import Path
 import numpy as np
-from transformers import Seq2SeqTrainer, Seq2SeqTrainingArguments, AutoFeatureExtractor, AutoTokenizer, AutoModelForSpeechSeq2Seq
-from datasets import Dataset
+from transformers import Seq2SeqTrainer, Seq2SeqTrainingArguments, WhisperProcessor, WhisperForConditionalGeneration
+from datasets import Dataset, Audio
 import json
 import io
 import wave
+import torch
+from dataclasses import dataclass
+from typing import Any, Dict, List, Union
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -29,6 +32,75 @@ training_cfg = load_config("configs/training.toml")
 # Initialize database
 db = Database()
 db.open()
+
+# ============== Data Collator ==============
+
+@dataclass
+class DataCollatorSpeechSeq2SeqWithPadding:
+    """Data collator for speech-to-text training"""
+    processor: Any
+
+    def __call__(self, features: List[Dict[str, Union[List[int], torch.Tensor]]]) -> Dict[str, torch.Tensor]:
+        # Split inputs and labels since they have to be of different lengths and need different padding methods
+        # First, pad the audio features to the longest sequence in the batch
+        input_features = [{"input_features": feature["input_features"]} for feature in features]
+        batch = self.processor.feature_extractor.pad(input_features, return_tensors="pt")
+
+        # Get the tokenized label sequences
+        label_features = [{"input_ids": feature["labels"]} for feature in features]
+        # Pad the labels to the longest sequence in the batch
+        labels_batch = self.processor.tokenizer.pad(label_features, return_tensors="pt")
+
+        # Replace padding with -100 to ignore loss correctly
+        labels = labels_batch["input_ids"].masked_fill(labels_batch.attention_mask.ne(1), -100)
+
+        # If bos token is appended in previous tokenization step,
+        # cut bos token here as it's append later anyways
+        if (labels[:, 0] == self.processor.tokenizer.bos_token_id).all().cpu().item():
+            labels = labels[:, 1:]
+
+        batch["labels"] = labels
+        return batch
+
+
+def prepare_dataset(transcripts: List[str], audio_data: List[torch.Tensor], processor: WhisperProcessor):
+    """Prepare dataset for training"""
+    
+    # Convert audio tensors to numpy arrays
+    audio_arrays = []
+    for audio_tensor in audio_data:
+        # Audio should be in 16kHz format
+        audio_np = audio_tensor.numpy()
+        audio_arrays.append(audio_np)
+    
+    # Create dataset dictionary
+    dataset_dict = {
+        "audio": audio_arrays,
+        "transcription": transcripts
+    }
+    
+    # Create dataset
+    dataset = Dataset.from_dict(dataset_dict)
+    
+    def prepare_dataset_features(batch):
+        # Load and process audio
+        audio = batch["audio"]
+        
+        # Compute log-Mel input features from input audio array
+        batch["input_features"] = processor.feature_extractor(
+            audio, sampling_rate=16000
+        ).input_features[0]
+        
+        # Encode target text to label ids
+        batch["labels"] = processor.tokenizer(batch["transcription"]).input_ids
+        
+        return batch
+    
+    # Process the dataset
+    dataset = dataset.map(prepare_dataset_features, remove_columns=dataset.column_names)
+    
+    return dataset
+
 
 # ============== Health & Stats ==============
 
@@ -136,61 +208,139 @@ def reset_database():
 @app.route('/api/train', methods=['POST'])
 def train_model():
     """Start model training with reviewed but untrained items"""
-    training_items = db.get_training_items()
-    
-    if training_items is None:
-        return jsonify({
-            'success': False,
-            'trained_count': 0,
-            'error': 'Failed to get training items'
-        }), 500
-    
-    if not training_items:
-        return jsonify({
-            'success': False,
-            'trained_count': 0,
-            'message': 'No reviewed items to train'
-        }), 200
-    
-    # Prepare training data
-    transcripts = []
-    audio_data = []
-    item_ids = []
-    
-    for item in training_items:
-        transcript = item['transcript']
-        audio_tensor = format_from_database(item['audio_blob'])
+    try:
+        training_items = db.get_training_items()
         
-        if audio_tensor is not None and transcript:
-            transcripts.append(transcript)
-            audio_data.append(audio_tensor)
-            item_ids.append(item['id'])
-    
-    if not transcripts:
+        if training_items is None:
+            return jsonify({
+                'success': False,
+                'trained_count': 0,
+                'error': 'Failed to get training items'
+            }), 500
+        
+        if not training_items:
+            return jsonify({
+                'success': False,
+                'trained_count': 0,
+                'message': 'No reviewed items to train'
+            }), 200
+        
+        # Prepare training data
+        transcripts = []
+        audio_data = []
+        item_ids = []
+        
+        for item in training_items:
+            transcript = item['transcript']
+            audio_tensor = format_from_database(item['audio_blob'])
+            
+            if audio_tensor is not None and transcript:
+                transcripts.append(transcript)
+                audio_data.append(audio_tensor)
+                item_ids.append(item['id'])
+        
+        if not transcripts:
+            return jsonify({
+                'success': False,
+                'trained_count': 0,
+                'message': 'No valid training data found'
+            }), 200
+        
+        print(f"[INFO] Training model with {len(item_ids)} items")
+        
+        # Get model path from config and convert to absolute path
+        model_path = training_cfg.get('training', {}).get('stt_model_path', '.\\.models\\stt\\distil-small.en')
+        # Convert to absolute path
+        if not os.path.isabs(model_path):
+            # Resolve relative to the project root (3 levels up from this file)
+            project_root = Path(__file__).parent.parent.parent
+            model_path = os.path.abspath(os.path.join(project_root, model_path))
+        
+        # Load processor and model
+        print(f"[INFO] Loading model from {model_path}")
+        processor = WhisperProcessor.from_pretrained(model_path, local_files_only=True)
+        model = WhisperForConditionalGeneration.from_pretrained(model_path, local_files_only=True)
+        
+        # Prepare dataset
+        print("[INFO] Preparing dataset...")
+        train_dataset = prepare_dataset(transcripts, audio_data, processor)
+        
+        # Get training parameters from config
+        train_cfg = training_cfg.get('training', {})
+        batch_size = train_cfg.get('batch_size', 4)
+        gradient_accumulation = train_cfg.get('gradient_accumulation_steps', 2)
+        learning_rate = train_cfg.get('learning_rate', 1e-5)
+        warmup_steps = train_cfg.get('warmup_steps', 50)
+        num_epochs = train_cfg.get('num_train_epochs', 3)
+        save_steps = train_cfg.get('save_steps', 100)
+        eval_steps = train_cfg.get('eval_steps', 100)
+        logging_steps = train_cfg.get('logging_steps', 25)
+        
+        # Set up training arguments
+        training_args = Seq2SeqTrainingArguments(
+            output_dir=os.path.join(model_path, "checkpoints"),
+            per_device_train_batch_size=batch_size,
+            gradient_accumulation_steps=gradient_accumulation,
+            learning_rate=learning_rate,
+            warmup_steps=warmup_steps,
+            num_train_epochs=num_epochs,
+            save_steps=save_steps,
+            eval_steps=eval_steps,
+            logging_steps=logging_steps,
+            report_to=["none"],
+            load_best_model_at_end=False,
+            greater_is_better=False,
+            push_to_hub=False,
+            remove_unused_columns=False,
+            label_names=["labels"],
+        )
+        
+        # Initialize data collator
+        data_collator = DataCollatorSpeechSeq2SeqWithPadding(processor=processor)
+        
+        # Initialize trainer
+        trainer = Seq2SeqTrainer(
+            args=training_args,
+            model=model,
+            train_dataset=train_dataset,
+            data_collator=data_collator,
+            tokenizer=processor.feature_extractor,
+        )
+        
+        # Train the model
+        print("[INFO] Starting training...")
+        trainer.train()
+        
+        # Save the fine-tuned model
+        print(f"[INFO] Saving model to {model_path}")
+        model.save_pretrained(model_path)
+        processor.save_pretrained(model_path)
+        
+        # Mark items as trained
+        success = db.mark_items_trained(item_ids)
+        if not success:
+            return jsonify({
+                'success': False,
+                'error': 'Training completed but failed to mark items as trained'
+            }), 500
+        
+        print(f"[INFO] Training completed successfully with {len(item_ids)} items")
+        
+        return jsonify({
+            'success': True,
+            'trained_count': len(item_ids),
+            'message': f'Successfully trained with {len(item_ids)} items'
+        }), 200
+        
+    except Exception as e:
+        print(f"[ERROR] Training failed: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({
             'success': False,
             'trained_count': 0,
-            'message': 'No valid training data found'
-        }), 200
-    
-    # Mark items as trained
-    success = db.mark_items_trained(item_ids)
-    if not success:
-        return jsonify({
-            'success': False,
-            'error': 'Failed to mark items as trained'
+            'error': f'Training failed: {str(e)}'
         }), 500
-    
-    print(f"[INFO] Training model with {len(item_ids)} items")
-    
-    # Here you would implement actual model training
-    # For now, we just mark items as trained
-    
-    return jsonify({
-        'success': True,
-        'trained_count': len(item_ids),
-        'message': f'Successfully trained with {len(item_ids)} items'
-    }), 200
 
 # ============== Routes ==============
 
