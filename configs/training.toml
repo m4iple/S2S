@@ -1,0 +1,11 @@
+[training]
+# Flask configuration
+flask_host = "127.0.0.1"
+flask_port = 8080
+flask_debug = false
+
+# Database configuration
+database_path = "C:\\Users\\Aspen\\Dev\\database\\database.db"
+
+# Model configuration
+stt_model_path = ".\\models\\stt\\distil-small.en"

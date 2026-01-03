@@ -27,9 +27,8 @@ S2S/
 │   ├── audio.py               # Audio utilities
 │   ├── config.py              # Configuration loader
 │   ├── database.py            # Database operations
-│   └── timing.py              # Timing utilities
 └── configs/
-    └── s2s.toml              # Training configuration
+    └── training.toml              # Training configuration
 ```
 
 

@@ -25,3 +25,5 @@ matplotlib>=3.7.0
 # Additional dependencies for Whisper fine-tuning
 evaluate>=0.4.0
 jiwer>=3.0.0
+
+toml

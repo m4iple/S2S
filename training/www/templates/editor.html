@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Training Editor</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Training Editor</h1>
+            <nav>
+                <a href="/" class="nav-link">Dashboard</a>
+                <a href="/editor" class="nav-link active">Editor</a>
+            </nav>
+        </header>
+
+        <main class="editor-main">
+            <!-- Item Details Panel -->
+            <section class="item-details">
+                <div class="item-info">
+                    <span>Item ID: <strong id="item-id">-</strong></span>
+                    <span>Timestamp: <strong id="item-timestamp">-</strong></span>
+                </div>
+            </section>
+
+            <!-- Audio Player -->
+            <section class="audio-section">
+                <h2>Audio Playback</h2>
+                <audio id="audio-player" controls style="width: 100%;"></audio>
+            </section>
+
+            <!-- Transcript Editor -->
+            <section class="editor-section">
+                <h2>Transcript</h2>
+                <textarea id="transcript-editor" placeholder="Edit the transcript here..." rows="8"></textarea>
+            </section>
+
+            <!-- Review Checkbox -->
+            <section class="review-section">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="review-checkbox">
+                    Mark as Reviewed
+                </label>
+            </section>
+
+            <!-- Action Buttons -->
+            <section class="action-section">
+                <button id="save-btn" class="btn btn-primary">Save & Next</button>
+                <button id="prev-btn" class="btn btn-secondary">Previous</button>
+                <button id="next-btn" class="btn btn-secondary">Next</button>
+                <button id="skip-btn" class="btn btn-secondary">Skip</button>
+                <button id="delete-btn" class="btn btn-danger">Delete</button>
+            </section>
+
+            <!-- Navigation Info -->
+            <section class="nav-info">
+                <span id="nav-status">Loading...</span>
+            </section>
+
+            <!-- Status Messages -->
+            <div id="status-message" class="status-message" style="display: none;"></div>
+        </main>
+
+        <footer>
+            <p>&copy; 2026 S2S Training System</p>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/editor.js') }}"></script>
+</body>
+</html>

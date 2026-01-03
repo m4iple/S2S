@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Training Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Training Dashboard</h1>
+            <nav>
+                <a href="/" class="nav-link active">Dashboard</a>
+                <a href="/editor" class="nav-link">Editor</a>
+            </nav>
+        </header>
+
+        <main>
+            <!-- Statistics Cards -->
+            <section class="stats-section">
+                <div class="stat-card">
+                    <div class="stat-value" id="total-count">0</div>
+                    <div class="stat-label">Total Items</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="reviewed-count">0</div>
+                    <div class="stat-label">Reviewed</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="trained-count">0</div>
+                    <div class="stat-label">Trained</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="pending-count">0</div>
+                    <div class="stat-label">Pending Training</div>
+                </div>
+            </section>
+
+            <!-- Control Section -->
+            <section class="control-section">
+                <button id="train-btn" class="btn btn-primary">Train Model</button>
+                <button id="refresh-btn" class="btn btn-secondary">Refresh Stats</button>
+                <button id="reset-db-btn" class="btn btn-danger">Reset Database</button>
+            </section>
+
+            <!-- Data Table -->
+            <section class="table-section">
+                <div class="table-controls">
+                    <input type="text" id="search-input" placeholder="Search transcripts...">
+                    <div class="filter-group">
+                        <label>
+                            <input type="checkbox" id="filter-reviewed"> Show Reviewed Only
+                        </label>
+                        <label>
+                            <input type="checkbox" id="filter-trained"> Show Trained Only
+                        </label>
+                    </div>
+                </div>
+
+                <table id="data-table" class="data-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Transcript</th>
+                            <th>Reviewed</th>
+                            <th>Trained</th>
+                            <th>Timestamp</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body">
+                        <!-- Rows populated by JavaScript -->
+                    </tbody>
+                </table>
+            </section>
+
+            <!-- Status Messages -->
+            <div id="status-message" class="status-message" style="display: none;"></div>
+        </main>
+
+        <footer>
+            <p>&copy; 2026 S2S Training System</p>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>

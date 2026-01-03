@@ -45,3 +45,17 @@ def format_for_database(audio):
     except Exception as e:
         print(f"[ERROR] formating audio as a blob: {e}")
         return None
+
+def format_from_database(audio_blob):
+    """Decompress and convert audio blob back to tensor"""
+    try:
+        if audio_blob is None:
+            return None
+        
+        audio_bytes = zlib.decompress(audio_blob)
+        audio_array = np.frombuffer(audio_bytes, dtype=np.int16)
+        audio_tensor = torch.from_numpy(audio_array).float() / 32767.0
+        return audio_tensor
+    except Exception as e:
+        print(f"[ERROR] Failed to format audio from database: {e}")
+        return None

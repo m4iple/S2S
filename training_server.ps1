@@ -57,4 +57,4 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "Starting main.py..." -ForegroundColor Green
-python main_training.py
+python training/src/app.py
