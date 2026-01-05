@@ -26,4 +26,8 @@ matplotlib>=3.7.0
 evaluate>=0.4.0
 jiwer>=3.0.0
 
+# Faster Whisper conversion
+faster-whisper>=0.9.0
+ctranslate2>=3.24.0
+
 toml

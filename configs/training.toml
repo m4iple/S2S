@@ -8,7 +8,8 @@ flask_debug = false
 database_path = "C:\\Users\\Aspen\\Dev\\database\\database.db"
 
 # Model configuration
-stt_model_path = ".\\.models\\stt\\distil-small.en"
+stt_model_path = ".\\.models\\stt\\whisper"
+stt_faster_model_path = ".\\.models\\stt\\faster"
 
 # Training arguments
 batch_size = 4

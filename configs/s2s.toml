@@ -53,7 +53,7 @@ max_buffer_frames = 72000
 
 [stt]
 model = "whisper"
-model_path = ".models/stt/distil-small.en"
+model_path = ".models/stt/faster"
 device = "cuda"
 compute_type = "float16"
 initial_prompt = "Speech-to-speech translation. Clear voice transcription."

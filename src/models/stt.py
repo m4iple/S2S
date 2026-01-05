@@ -1,4 +1,6 @@
 import faster_whisper
+import os
+from pathlib import Path
 
 class Stt:
     def __init__(self, config):
@@ -8,9 +10,25 @@ class Stt:
         self.load_model()
 
     def load_model(self):
-        """Loads the stt model"""
+        """Loads the newest numbered stt model"""
+        base_path = Path(self.cfg["model_path"])
+        
+        numbered_dirs = []
+        if base_path.exists():
+            for item in base_path.iterdir():
+                if item.is_dir() and item.name.isdigit():
+                    numbered_dirs.append(int(item.name))
+        
+        if numbered_dirs:
+            newest_version = max(numbered_dirs)
+            model_path = base_path / str(newest_version)
+        else:
+            model_path = base_path
+        
+        print(f"[DEBUG] {str(model_path)}")
+
         self.model = faster_whisper.WhisperModel(
-            self.cfg["model_path"],
+            str(model_path),
             device=self.cfg["device"],
             compute_type=self.cfg["compute_type"]
         )

@@ -141,10 +141,17 @@ async function saveItem() {
         showStatus('Item saved successfully', 'success');
         
         // Move to next item if reviewed
-        if (reviewCheckbox.checked && currentIndex < items.length - 1) {
-            setTimeout(() => {
-                nextItem();
-            }, 500);
+        if (reviewCheckbox.checked) {
+            if (currentIndex < items.length - 1) {
+                setTimeout(() => {
+                    nextItem();
+                }, 500);
+            } else {
+                // Last item - return to dashboard
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 500);
+            }
         }
     } catch (error) {
         console.error('Error saving item:', error);
@@ -164,6 +171,9 @@ function previousItem() {
 function nextItem() {
     if (currentIndex < items.length - 1) {
         loadItem(currentIndex + 1);
+    } else {
+        // Last item - return to dashboard
+        window.location.href = '/';
     }
 }
 
@@ -214,7 +224,8 @@ function skipItem() {
     if (currentIndex < items.length - 1) {
         loadItem(currentIndex + 1);
     } else {
-        showStatus('No more items', 'info');
+        // Last item - return to dashboard
+        window.location.href = '/';
     }
 }
 
