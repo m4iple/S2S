@@ -170,7 +170,6 @@ class S2s:
                 if self.raw_input_buffer.shape[0] >= self.cfg["audio"]["resample_buffer_threshold"]:
                     
                     self.timing.start('resample')
-                    # Use the persistent resampler instance
                     resampled = self.resampler(self.raw_input_buffer)
                     self.raw_input_buffer = torch.empty(0)
                     self.timing.end('resample') 
@@ -210,10 +209,10 @@ class S2s:
         self.timing.end('stt')
 
         if text.strip():
-            
-            self.timing.start('training')
-            self.database.insert_training_data(text.strip(), audio_np)
-            self.timing.end('training')
+            if self.capture_training_data:
+                self.timing.start('training')
+                self.database.insert_training_data(text.strip(), audio_np)
+                self.timing.end('training')
 
             self.timing.start('tts')
             synthesized = self.tts.synthesize(text)
