@@ -30,11 +30,11 @@ resample_buffer_threshold = 4096
 
 [monitoring]
 enabled = true
-device = 40
+device = 19
 samplerate = 44100
-blocksize = 512
+blocksize = 256
 dtype = "float32"
-channels = 2
+channels = 8
 
 #Device 40: Voicemeeter AUX Input (VB-Audio Voicemeeter VAIO)
 #  Input Channels: 0
@@ -98,3 +98,6 @@ cutoff = 7500
 order = 4
 btype = "low"
 analog = false
+
+[training]
+capture = false

@@ -6,7 +6,7 @@ frameless = true
 transparent_background = true
 
 [display]
-max_lines = 20
+max_lines = 50
 line_spacing = 5
 fade_duration = 3000  # milliseconds per line before fade out
 word_wrap = false

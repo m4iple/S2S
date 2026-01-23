@@ -13,7 +13,6 @@ class S2sWindow(QMainWindow):
         'model': {
             'type': 'combo',
             'label': 'Model:',
-            'config_id': 'tts.model',
             'handler': 'set_model',
             'population_method': 'populate_tts_models'
         },
@@ -120,7 +119,8 @@ class S2sWindow(QMainWindow):
         'capture_training_data_checkbox': {
             'type': 'checkbox',
             'label': 'Capture Training Data',
-            'handler': 'toggle_capture_training_data'
+            'config_id': 'training.capture',
+            'handler': 'change_conf'
         },
         'api_enabled_checkbox': {
             'type': 'checkbox',
@@ -364,8 +364,8 @@ class S2sWindow(QMainWindow):
     def _handle_set_model(self, field_name, field_def, value):
         """Handle TTS model changes"""
         element = self.ui_elements[field_name]
-        if element.currentData() and hasattr(self.s2s, 'set_model'):
-            self.s2s.set_model(element.currentData())
+        if element.currentData() and hasattr(self.s2s, 'set_tts_model'):
+            self.s2s.set_tts_model(element.currentData())
     
     def _handle_set_stt_model(self, field_name, field_def, value):
         """Handle STT model changes"""

@@ -47,7 +47,6 @@ class S2s:
 
         self.processing_thread = None
         self.input_queue = queue.Queue()
-        self.capture_training_data = False
 
         self.output_buffer = np.array([], dtype=self.cfg["audio"]["dtype"])
         
@@ -88,10 +87,6 @@ class S2s:
     def get_all_tts_models(self):
         """Gets all the TTS models for the UI"""
         return self.tts.get_all_models()
-    
-    def toggle_capture_training_data(self, enabled):
-        """Toggle training data capture on/off"""
-        self.capture_training_data = enabled
 
     def start_stream(self):
         """Starts the audio stream and processing thread"""
@@ -209,10 +204,11 @@ class S2s:
         self.timing.end('stt')
 
         if text.strip():
-            if self.capture_training_data:
-                self.timing.start('training')
+            
+            self.timing.start('training')
+            if self.cfg["training"]["capture"]:
                 self.database.insert_training_data(text.strip(), audio_np)
-                self.timing.end('training')
+            self.timing.end('training')
 
             self.timing.start('tts')
             synthesized = self.tts.synthesize(text)
@@ -236,7 +232,7 @@ class S2s:
         if not text.strip():
             return
         
-        self.output_buffer = np.array([], dtype=self.cfg["audio"]["dtype"])
+        #self.output_buffer = np.array([], dtype=self.cfg["audio"]["dtype"])
         synthesized = self.tts.synthesize(text)
         modified = self._apply_audio_effects(synthesized)
         self.output_buffer = np.concatenate([self.output_buffer, modified])
