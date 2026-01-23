@@ -1,6 +1,6 @@
 enabled = false
 host = "127.0.0.1"
-port = 5050
+port = 8772
 default_model = "en_US-amy-medium"
 default_subtitle_font = "03-HurmitNerdFontMono-Regular"
 default_subtitle_color = "#5d0c00"

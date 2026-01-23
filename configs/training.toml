@@ -1,7 +1,7 @@
 [training]
 # Flask configuration
 flask_host = "127.0.0.1"
-flask_port = 8080
+flask_port = 8277
 flask_debug = false
 
 # Database configuration
