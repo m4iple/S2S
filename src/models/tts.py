@@ -31,73 +31,74 @@ class Tts:
         return resampled
 
     def get_model_path(self, model):
-        """Gets the model path from an key"""
+        """Gets the model path by autodetecting .onnx files in the tts models folder"""
+        # gather all .onnx files under the models folder
+        found = []
+        for root, dirs, files in os.walk(self.path):
+            for fname in files:
+                if fname.lower().endswith('.onnx'):
+                    full_path = os.path.join(root, fname)
+                    rel_path = os.path.relpath(full_path, self.path)
+                    found.append((full_path, rel_path, fname))
+
+        if not found:
+            raise FileNotFoundError("No TTS model found. Please ensure you have .onnx models in the .models/tts directory.")
+
         voice_path = None
-        voices_json_path = self.path + '/voices.json'
-        if os.path.exists(voices_json_path):
-            try:
-                with open(voices_json_path, 'r', encoding='utf-8') as f:
-                    voices_data = json.load(f)
-                
-                if model in voices_data:
-                    voice_info = voices_data[model]
-                    for file_path in voice_info.get('files', {}).keys():
-                        if file_path.endswith('.onnx'):
-                            test_path = os.path.join(self.path, file_path)
-                            if os.path.exists(test_path):
-                                voice_path = test_path
-                                break
-            except json.JSONDecodeError as e:
-                print(f"[ERROR] reading voices.json: {e}")
-        
+        if model:
+            model_lower = model.lower()
+            # exact basename (without extension) match
+            for full_path, rel_path, fname in found:
+                if os.path.splitext(fname)[0].lower() == model_lower:
+                    voice_path = full_path
+                    break
+            # exact relative path match
+            if not voice_path:
+                for full_path, rel_path, fname in found:
+                    if rel_path.lower() == model_lower or rel_path.replace('\\','/').lower() == model_lower:
+                        voice_path = full_path
+                        break
+            # substring match
+            if not voice_path:
+                for full_path, rel_path, fname in found:
+                    if model_lower in fname.lower() or model_lower in rel_path.lower():
+                        voice_path = full_path
+                        break
+        else:
+            # try default from config if present
+            default = self.cfg.get('default_voice')
+            if default:
+                return self.get_model_path(default)
+
+            # fallback to first available model
+            voice_path = found[0][0]
+
         if not voice_path:
-            raise FileNotFoundError(f"No TTS model found. Please ensure you have models in the .models directory.")
-    
+            raise FileNotFoundError(f"No TTS model matching '{model}' found in {self.path}.")
+
         self.model_path = voice_path
 
     def get_all_models(self):
-        """Gets all the modles form the voices.json"""
-        voices_json_path = self.path + '/voices.json'
-        if not os.path.exists(voices_json_path):
-            models_dir = self.path
-            if not os.path.exists(models_dir):
-                return []
-        
-        try:
-            with open(voices_json_path, 'r', encoding='utf-8') as f:
-                voices_data = json.load(f)
-            
-            available_models = []
-            for voice_key, voice_info in voices_data.items():
-                onnx_file_path = None
-                for file_path in voice_info.get('files', {}).keys():
-                    if file_path.endswith('.onnx'):
-                        full_path = os.path.join(self.path, file_path)
-                        if os.path.exists(full_path):
-                            onnx_file_path = file_path
-                            break
-                
-                if onnx_file_path:
-                    language = voice_info.get('language', {})
-                    name = voice_info.get('name', voice_key)
-                    quality = voice_info.get('quality', '')
-                    
-                    display_name = f"{language.get('name_english', language.get('code', ''))} {language.get('region', '')} - {name}"
-                    if quality:
-                        display_name += f" ({quality})"
-                    
+        """Detect all .onnx models in the tts models folder and return metadata list"""
+        models_dir = self.path
+        if not os.path.exists(models_dir):
+            return []
+
+        available_models = []
+        for root, dirs, files in os.walk(models_dir):
+            for fname in files:
+                if fname.lower().endswith('.onnx'):
+                    full_path = os.path.join(root, fname)
+                    rel_path = os.path.relpath(full_path, models_dir).replace('\\','/')
+                    key = os.path.splitext(os.path.basename(fname))[0]
                     available_models.append({
-                        'key': voice_key,
-                        'display_name': display_name,
-                        'file_path': onnx_file_path,
-                        'language': language,
-                        'name': name,
-                        'quality': quality
+                        'key': key,
+                        'display_name': key,
+                        'file_path': rel_path,
+                        'language': {},
+                        'name': key,
+                        'quality': ''
                     })
 
-            available_models.sort(key=lambda x: (x['language'].get('name_english', ''), x['language'].get('region', ''), x['name'], x['quality']))
-            return available_models
-            
-        except Exception as e:
-            print(f"[ERROR] reading voices.json: {e}")
-            return []
+        available_models.sort(key=lambda x: (x['name'], x['key']))
+        return available_models
