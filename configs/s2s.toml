@@ -65,7 +65,7 @@ vad_filter = false
 [tts]
 default_voice = "en_US-hfc_female-medium"
 use_cuda = true
-samplerate = 352800
+samplerate = 44100
 
 [voice_processing]
 speed = 1.0

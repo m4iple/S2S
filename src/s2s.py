@@ -1,3 +1,8 @@
+import warnings
+# Filter the specific deprecation warning from ctranslate2/pkg_resources
+warnings.filterwarnings("ignore", category=UserWarning, module="ctranslate2")
+warnings.filterwarnings("ignore", message=".*pkg_resources is deprecated.*")
+
 import numpy as np
 import torch
 import torchaudio
@@ -149,6 +154,11 @@ class S2s:
 
     def _processing_loop(self):
         """Main processing loop - threaded"""
+        
+        # Use a list to hold chunks (Cheap append) instead of torch.cat (Expensive copy)
+        input_chunks = []
+        current_buffer_samples = 0
+        threshold = self.cfg["audio"]["resample_buffer_threshold"]
 
         while self.stream.is_running.is_set():
             try:
@@ -157,16 +167,27 @@ class S2s:
                 self.timing.start('complete')
 
                 self.timing.start('tensor_ops')
+                # Keep conversion simple
                 mono_audio_tensor = torch.from_numpy(indata[:, 0]).to(torch.float32)
                 
-                self.raw_input_buffer = torch.cat([self.raw_input_buffer, mono_audio_tensor])
+                # OPTIMIZATION: Just append to list
+                input_chunks.append(mono_audio_tensor)
+                current_buffer_samples += mono_audio_tensor.shape[0]
                 self.timing.end('tensor_ops')
 
-                if self.raw_input_buffer.shape[0] >= self.cfg["audio"]["resample_buffer_threshold"]:
+                # Only combine when we have enough data
+                if current_buffer_samples >= threshold:
+                    
+                    # Combine once
+                    self.raw_input_buffer = torch.cat(input_chunks)
+                    
+                    # Reset accumulators
+                    input_chunks = []
+                    current_buffer_samples = 0
                     
                     self.timing.start('resample')
+                    # This runs on CPU, which is correct for Input latency
                     resampled = self.resampler(self.raw_input_buffer)
-                    self.raw_input_buffer = torch.empty(0)
                     self.timing.end('resample') 
 
                     self.timing.start('vad')
@@ -175,8 +196,11 @@ class S2s:
 
                     text_for_summary = ""
                     if should_process and speech_audio is not None:
+                        # Clear raw buffer immediately to free memory
+                        self.raw_input_buffer = None 
                         text_for_summary = self._process_speech_chunk(speech_audio) or ""
-
+                    
+                    # ... [Rest of the loop logic remains the same] ...
                     self.timing.end('complete')
 
                     if text_for_summary.strip():
@@ -294,5 +318,11 @@ class S2s:
 
         if self.cfg["filters"]["highpass"]["enabled"]:
             modified = effects.highpass_filter(modified, self.cfg["audio"]["samplerate"], self.cfg["filters"]["highpass"])
+        
+        target_channels = self.cfg["audio"]["channels"]
+        
+        if len(modified.shape) == 1:
+            expanded = np.tile(modified[:, np.newaxis], (1, target_channels))
+            modified = expanded.flatten()
 
         return modified

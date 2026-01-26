@@ -1,9 +1,10 @@
+import os
 import numpy as np
 from piper import PiperVoice
 import torch
-from utils.audio import resample_audio
-import os
-import json
+import torchaudio
+import onnxruntime as ort
+
 
 class Tts:
     def __init__(self, config):
@@ -11,6 +12,11 @@ class Tts:
         self.model = None
         self.model_path = None
         self.path = '.models/tts'
+        
+        # PERSISTENT RESAMPLER
+        self.resampler = None
+        self.target_rate = self.cfg["samplerate"]
+        self.device = torch.device("cuda" if self.cfg["use_cuda"] and torch.cuda.is_available() else "cpu")
     
     def load_model(self, model):
         """Loads tts model"""
@@ -18,17 +24,57 @@ class Tts:
             model = self.cfg["default_voice"]
 
         self.get_model_path(model)
-        self.model = PiperVoice.load(self.model_path, use_cuda=self.cfg["use_cuda"])
+        
+        # Silence ONNX Warnings
+        sess_options = ort.SessionOptions()
+        sess_options.log_severity_level = 3
+        
+        print(f"[INFO] Loading TTS model on {self.device}")
+        self.model = PiperVoice.load(
+            self.model_path, 
+            use_cuda=(self.device.type == "cuda"),
+        )
+
+        # --- DEBUG PRINTS ---
+        model_rate = self.model.config.sample_rate
+        print(f"[DEBUG] Model Native Rate: {model_rate} Hz")
+        print(f"[DEBUG] Target Output Rate: {self.target_rate} Hz")
+        # --------------------
+        
+        # Initialize GPU Resampler
+        model_rate = self.model.config.sample_rate
+        if model_rate != self.target_rate:
+            print(f"[INFO] Initializing CUDA Resampler: {model_rate}Hz -> {self.target_rate}Hz")
+            
+            self.resampler = torchaudio.transforms.Resample(
+                orig_freq=model_rate, 
+                new_freq=self.target_rate,
+                dtype=torch.float32
+            ).to(self.device) # <--- MOVES RESAMPLER TO GPU
+        else:
+            self.resampler = None
 
     def synthesize(self, text):
         """Synthesizes given text"""
+        if not self.model:
+            return np.array([], dtype=np.float32)
+
+
         wav_generator = self.model.synthesize(text)
         wav_bytes = b"".join(chunk.audio_int16_bytes for chunk in wav_generator)
 
-        audio_output_np = np.frombuffer(wav_bytes, dtype=np.int16).astype(np.float32, copy=False) / 32767.0
+        audio_int16 = np.frombuffer(wav_bytes, dtype=np.int16).copy()
 
-        resampled = resample_audio(torch.from_numpy(audio_output_np), self.model.config.sample_rate, self.cfg["samplerate"]).cpu().numpy()
-        return resampled
+        if self.resampler is None:
+            return audio_int16.astype(np.float32) / 32767.0
+
+        audio_tensor = torch.from_numpy(audio_int16).to(self.device).float()
+
+        audio_tensor /= 32767.0
+
+        resampled_tensor = self.resampler(audio_tensor)
+
+        return resampled_tensor.cpu().numpy()
 
     def get_model_path(self, model):
         """Gets the model path by autodetecting .onnx files in the tts models folder"""

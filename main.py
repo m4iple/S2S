@@ -1,3 +1,6 @@
+import os
+os.environ["ORT_LOGGING_LEVEL"] = "3"
+
 from PyQt6.QtWidgets import QApplication
 from src.s2s import S2s
 from ui.s2s import S2sWindow

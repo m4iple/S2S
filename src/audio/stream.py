@@ -29,6 +29,7 @@ class AudioStream:
                 dtype=self.cfg_a["dtype"],
                 channels=self.cfg_a["channels"],
                 callback=self._callback_wrapper,
+                latency=0.08
             )
 
             self.stream.start()
@@ -44,6 +45,7 @@ class AudioStream:
                     blocksize=self.cfg_m["blocksize"],
                     dtype=self.cfg_m["dtype"],
                     channels=self.cfg_m["channels"],
+                    latency=0.08
                 )
                 
                 self.monitor_stream.start()
