@@ -1,13 +1,17 @@
+# --- ADD THIS LINE AT THE VERY TOP ---
+--extra-index-url https://download.pytorch.org/whl/cu128
+
 # Core training framework
-torch>=2.0.0
-transformers>=4.30.0
+torch>=2.7.0  # MUST be 2.7+ for sm_120 support
+torchvision>=0.22.0
+torchaudio>=2.2.0
+transformers>=4.40.0 # Newer version recommended for PyTorch 2.7 compatibility
 datasets>=2.14.0
 accelerate>=0.20.0
 
 # Audio processing
 librosa>=0.10.0
 soundfile>=0.12.0
-torchaudio>=2.0.0
 
 # Web interface
 flask>=2.3.0

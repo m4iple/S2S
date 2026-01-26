@@ -1,5 +1,5 @@
 // Dashboard functionality
-const API_BASE = 'http://localhost:8080/api';
+const API_BASE = 'http://localhost:8277/api';
 
 let allItems = [];
 let filteredItems = [];

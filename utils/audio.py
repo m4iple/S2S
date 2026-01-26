@@ -53,9 +53,12 @@ def format_from_database(audio_blob):
             return None
         
         audio_bytes = zlib.decompress(audio_blob)
-        audio_array = np.frombuffer(audio_bytes, dtype=np.int16)
-        audio_tensor = torch.from_numpy(audio_array).float() / 32767.0
-        return audio_tensor
+        audio_array = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32767.0
+        
+        if len(audio_array.shape) > 1 and audio_array.shape[1] > 1:
+            audio_array = audio_array.mean(axis=1) # Convert to Mono
+
+        return torch.from_numpy(audio_array)
     except Exception as e:
-        print(f"[ERROR] Failed to format audio from database: {e}")
+        print(f"[ERROR] Failed to format audio: {e}")
         return None
