@@ -1,8 +1,9 @@
+from .stt_provider import STTProvider
 import faster_whisper
 import os
 from pathlib import Path
 
-class Stt:
+class Stt(STTProvider):
     def __init__(self, config):
         self.cfg = config["stt"]
         self.model = None

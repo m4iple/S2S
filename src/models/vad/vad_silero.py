@@ -1,8 +1,9 @@
+from .vad_provider import VADProvider
 import torch
 from silero_vad import load_silero_vad
 
 
-class Vad:
+class Vad(VADProvider):
     def __init__(self, config):
         self.cfg = config["vad"]
         self.model = load_silero_vad()

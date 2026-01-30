@@ -1,3 +1,4 @@
+from .tts_provider import TTSProvider
 import os
 import numpy as np
 from piper import PiperVoice
@@ -6,7 +7,7 @@ import torchaudio
 import onnxruntime as ort
 
 
-class Tts:
+class Tts(TTSProvider):
     def __init__(self, config):
         self.cfg = config["tts"]
         self.model = None

@@ -1,0 +1,8 @@
+[tts]
+type = "piper"
+
+[vad]
+type = "silero"
+
+[stt]
+type = "faster_whisper"
