@@ -186,19 +186,21 @@ class S2s:
                     current_buffer_samples = 0
                     
                     self.timing.start('resample')
-                    # This runs on CPU, which is correct for Input latency
                     resampled = self.resampler(self.raw_input_buffer)
                     self.timing.end('resample') 
 
-                    self.timing.start('vad')
-                    speech_audio, should_process = self.vad.process_chunk(resampled)
-                    self.timing.end('vad')
+                    if self.cfg["vad"]['enabled']:
+                        self.timing.start('vad')
+                        speech_audio, should_process = self.vad.process_chunk(resampled)
+                        self.timing.end('vad')
 
-                    text_for_summary = ""
-                    if should_process and speech_audio is not None:
-                        # Clear raw buffer immediately to free memory
-                        self.raw_input_buffer = None 
-                        text_for_summary = self._process_speech_chunk(speech_audio) or ""
+                        text_for_summary = ""
+                        if should_process and speech_audio is not None:
+                            # Clear raw buffer immediately to free memory
+                            self.raw_input_buffer = None 
+                            text_for_summary = self._process_speech_chunk(speech_audio) or ""
+                    else:
+                        text_for_summary = self._process_speech_chunk(resampled) or ""
                     
                     # ... [Rest of the loop logic remains the same] ...
                     self.timing.end('complete')

@@ -6,3 +6,4 @@ type = "silero"
 
 [stt]
 type = "faster_whisper"
+#type = "sherpa" #"faster_whisper"

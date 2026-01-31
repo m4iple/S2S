@@ -15,7 +15,9 @@ dtype = "float32"
 channels = 2
 input = 24
 output = 32
-resample_buffer_threshold = 1024 #4096
+#resample_buffer_threshold = 4096
+#resample_buffer_threshold = 1024
+resample_buffer_threshold = 4410
 
 
 #Device 22: Voicemeeter Out B1 (VB-Audio Voicemeeter VAIO)
@@ -32,6 +34,7 @@ resample_buffer_threshold = 1024 #4096
 enabled = false
 device = 19
 samplerate = 44100
+#blocksize = 256
 blocksize = 128 #256
 dtype = "float32"
 channels = 8
@@ -42,6 +45,7 @@ channels = 8
 #  Sample Rate: 44100.0 Hz
 
 [vad]
+enabled = true
 model = "silero"
 samplerate = 16000
 speech_prob_threshold = 0.30 #0.35
@@ -61,6 +65,10 @@ language = "en"
 beam_size = 1
 word_timestamps = true
 vad_filter = false
+tokens = ".models/stt/sherpa/tokens.txt"
+encoder = ".models/stt/sherpa/encoder-epoch-99-avg-1.onnx"
+decoder = ".models/stt/sherpa/decoder-epoch-99-avg-1.onnx"
+joiner = ".models/stt/sherpa/joiner-epoch-99-avg-1.onnx"
 
 [tts]
 default_voice = "en_US-hfc_female-medium"
