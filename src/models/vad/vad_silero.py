@@ -48,17 +48,9 @@ class Vad(VADProvider):
                     self.process_now = True
             else:
                 if self.is_speaking:
-                    if self.silence_counter < self.cfg["post_speech_silence_frames"]:
-                        self.speech_buffer = torch.cat([self.speech_buffer, chunk])
-                    
-                    self.silence_counter += 1
-
-                    threshold = self.cfg["silence_threshold_frames"] + self.cfg["post_speech_silence_frames"]
-
-                    if self.silence_counter > threshold or self.process_now:
-                        speech_audio = self.speech_buffer.clone()
-                        self._reset_on_speech()
-                        should_process = True
+                    speech_audio = self.speech_buffer.clone()
+                    self._reset_on_speech()
+                    should_process = True
 
         return speech_audio, should_process
     

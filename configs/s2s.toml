@@ -12,10 +12,10 @@ position = "default"  # Options: default, center, top-left, top-right, bottom-le
 samplerate = 44100
 blocksize = 256
 dtype = "float32"
-channels = 8
-input = 22
+channels = 2
+input = 24
 output = 32
-resample_buffer_threshold = 4096
+resample_buffer_threshold = 1024 #4096
 
 
 #Device 22: Voicemeeter Out B1 (VB-Audio Voicemeeter VAIO)
@@ -29,10 +29,10 @@ resample_buffer_threshold = 4096
 #  Sample Rate: 44100.0 Hz
 
 [monitoring]
-enabled = true
+enabled = false
 device = 19
 samplerate = 44100
-blocksize = 256
+blocksize = 128 #256
 dtype = "float32"
 channels = 8
 
@@ -44,12 +44,12 @@ channels = 8
 [vad]
 model = "silero"
 samplerate = 16000
-speech_prob_threshold = 0.35
+speech_prob_threshold = 0.30 #0.35
 buffer_chunk_size = 512
 silence_threshold_frames = 0
-pre_speech_frames = 5
-post_speech_silence_frames = 5
-max_buffer_frames = 72000
+post_speech_silence_frames = 1 
+pre_speech_frames = 2
+max_buffer_frames = 16000
 
 [stt]
 model = "whisper"
